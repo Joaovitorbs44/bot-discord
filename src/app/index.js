@@ -45,6 +45,10 @@ const handleRanking = require(
   "../scripts/ranking"
 );
 
+const handleSolicitacoes = require(
+  "../scripts/solicitacoes"
+);
+
 const {
   handleHistory,
   handleMatchLookup
@@ -560,6 +564,20 @@ client.on(
         }
 
         return handleSeasons(
+          interaction
+        );
+      }
+
+      // ======================================
+      // /solicitacoes
+      // ======================================
+
+      if (
+        interaction.isChatInputCommand() &&
+        interaction.commandName ===
+          "solicitacoes"
+      ) {
+        return handleSolicitacoes(
           interaction
         );
       }
