@@ -1,0 +1,18 @@
+{
+  "name": "r6-matchmaking-bot",
+  "version": "1.0.0",
+  "description": "Bot de matchmaking 5v5 para Rainbow Six Siege",
+  "main": "src/app/index.js",
+  "scripts": {
+    "start": "node src/app/index.js",
+    "dev": "node --watch src/app/index.js",
+    "setup": "node src/scripts/setup.js",
+    "push": "node src/scripts/push.js",
+    "commands": "node src/scripts/register.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "discord.js": "^14.27.0",
+    "dotenv": "^18.0.5"
+  }
+}
