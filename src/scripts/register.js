@@ -102,6 +102,13 @@ const commands = [
           )
           .setRequired(true)
     )
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("solicitacoes")
+    .setDescription(
+      "Mostra novamente as solicitações de acesso pendentes."
+    )
     .toJSON()
 ];
 
