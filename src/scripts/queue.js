@@ -23,8 +23,16 @@ const {
   "./ready"
 );
 
+const {
+  logQueueJoin,
+  logQueueLeave
+} = require(
+  "./logs"
+);
+
 /*
- * Processa os botões da fila.
+ * Processa os botões
+ * da fila.
  */
 async function handleQueue(
   interaction
@@ -39,8 +47,8 @@ async function handleQueue(
     );
 
   /*
-   * Somente jogadores aprovados
-   * e com acesso ativo.
+   * Somente jogadores
+   * aprovados.
    */
   if (
     !player ||
@@ -67,8 +75,9 @@ async function handleQueue(
   }
 
   /*
-   * Durante a formação da partida,
-   * ninguém pode entrar ou sair.
+   * Durante a formação
+   * da partida ninguém
+   * pode entrar ou sair.
    */
   if (
     queueState.isQueueLocked()
@@ -76,6 +85,32 @@ async function handleQueue(
     return interaction.reply({
       content:
         "A fila está bloqueada enquanto uma partida está sendo formada.",
+      ephemeral: true
+    });
+  }
+
+  /*
+   * Cooldown.
+   */
+  const remaining =
+    queueState
+      .getCooldownRemaining(
+        interaction.user.id,
+        config.matchmaking
+          .queueCooldownSeconds
+      );
+
+  if (
+    remaining > 0
+  ) {
+    const seconds =
+      Math.ceil(
+        remaining / 1000
+      );
+
+    return interaction.reply({
+      content:
+        `Aguarde **${seconds}s** antes de usar a fila novamente.`,
       ephemeral: true
     });
   }
@@ -108,7 +143,8 @@ async function joinQueue(
   player
 ) {
   const requiredPlayers =
-    config.matchmaking.requiredPlayers;
+    config.matchmaking
+      .requiredPlayers;
 
   if (
     queueState.hasPlayer(
@@ -123,8 +159,8 @@ async function joinQueue(
   }
 
   /*
-   * Não permite entrar se já
-   * estiver em uma partida ativa.
+   * Verifica se o jogador
+   * já está em uma partida.
    */
   const activeMatch =
     db.prepare(`
@@ -160,8 +196,8 @@ async function joinQueue(
   }
 
   /*
-   * Segurança para impedir
-   * mais jogadores que o limite.
+   * Impede ultrapassar
+   * o limite.
    */
   if (
     queueState.getSize() >=
@@ -195,17 +231,20 @@ async function joinQueue(
   }
 
   /*
-   * Guarda a mensagem original
-   * do painel.
+   * Inicia cooldown.
+   */
+  queueState.setCooldown(
+    interaction.user.id
+  );
+
+  /*
+   * Guarda a mensagem
+   * principal da fila.
    */
   queueState.setQueueMessage(
     interaction.message
   );
 
-  /*
-   * Atualiza imediatamente
-   * a interação do botão.
-   */
   await interaction.update(
     createQueuePanel()
   );
@@ -217,8 +256,17 @@ async function joinQueue(
   });
 
   /*
-   * Ao atingir o número necessário,
-   * a fila é bloqueada.
+   * Log.
+   */
+  await logQueueJoin(
+    interaction,
+    player,
+    queueState.getSize(),
+    requiredPlayers
+  );
+
+  /*
+   * Fila completa.
    */
   if (
     queueState.getSize() ===
@@ -228,17 +276,35 @@ async function joinQueue(
 
     await updateQueuePanel();
 
+    const players =
+      queueState.getPlayers();
+
     try {
+      /*
+       * Alerta público.
+       */
+      await interaction.followUp({
+        content:
+          createMatchFoundMessage(
+            players
+          ),
+        allowedMentions: {
+          users:
+            players.map(
+              (player) =>
+                player.discordId
+            )
+        }
+      });
+
+      /*
+       * Inicia Ready Check.
+       */
       await startReadyCheck(
         interaction,
-        queueState.getPlayers()
+        players
       );
     } catch (error) {
-      /*
-       * Se o Ready Check não
-       * conseguir iniciar, a fila
-       * precisa voltar a funcionar.
-       */
       queueState.unlockQueue();
 
       await updateQueuePanel();
@@ -255,7 +321,8 @@ async function joinQueue(
           ephemeral: true
         });
       } catch {
-        // A interação pode já ter expirado.
+        // A interação pode
+        // já ter expirado.
       }
     }
   }
@@ -268,7 +335,8 @@ async function leaveQueue(
   interaction
 ) {
   const requiredPlayers =
-    config.matchmaking.requiredPlayers;
+    config.matchmaking
+      .requiredPlayers;
 
   if (
     !queueState.hasPlayer(
@@ -286,6 +354,10 @@ async function leaveQueue(
     interaction.user.id
   );
 
+  queueState.setCooldown(
+    interaction.user.id
+  );
+
   queueState.setQueueMessage(
     interaction.message
   );
@@ -299,10 +371,40 @@ async function leaveQueue(
       `Você saiu da fila. (${queueState.getSize()}/${requiredPlayers})`,
     ephemeral: true
   });
+
+  await logQueueLeave(
+    interaction,
+    queueState.getSize(),
+    requiredPlayers
+  );
 }
 
 /*
- * Atualiza o painel principal.
+ * Mensagem enviada quando
+ * encontramos os 10 jogadores.
+ */
+function createMatchFoundMessage(
+  players
+) {
+  const mentions =
+    players
+      .map(
+        (player) =>
+          `<@${player.discordId}>`
+      )
+      .join(" ");
+
+  return (
+    "🔔 **PARTIDA ENCONTRADA!**\n\n" +
+    `${mentions}\n\n` +
+    "Os **10 jogadores** foram encontrados.\n" +
+    "Confirmem presença no **Ready Check** abaixo."
+  );
+}
+
+/*
+ * Atualiza o painel
+ * principal da fila.
  */
 async function updateQueuePanel() {
   const queueMessage =
@@ -332,7 +434,8 @@ function createQueuePanel() {
     queueState.getPlayers();
 
   const requiredPlayers =
-    config.matchmaking.requiredPlayers;
+    config.matchmaking
+      .requiredPlayers;
 
   const locked =
     queueState.isQueueLocked();
@@ -374,6 +477,18 @@ function createQueuePanel() {
 
           value:
             `${queueState.getSize()}/${requiredPlayers}`,
+
+          inline: true
+        },
+
+        {
+          name:
+            "Status",
+
+          value:
+            locked
+              ? "🔒 Formando partida"
+              : "🟢 Aberta",
 
           inline: true
         },
@@ -439,9 +554,8 @@ function createQueuePanel() {
 }
 
 /*
- * Funções mantidas para
- * compatibilidade com outros
- * arquivos do projeto.
+ * Compatibilidade com
+ * outros arquivos.
  */
 function getQueue() {
   return queueState.getPlayers();
@@ -487,5 +601,7 @@ module.exports = {
   updateQueuePanel,
 
   removePlayer,
-  removePlayersFromQueue
+  removePlayersFromQueue,
+
+  createMatchFoundMessage
 };
