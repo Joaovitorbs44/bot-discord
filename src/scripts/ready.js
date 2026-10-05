@@ -468,6 +468,63 @@ async function handleReadyCheckTimeout() {
 }
 
 /*
+ * Cancela administrativamente
+ * um Ready Check ativo.
+ *
+ * Usado pelo comando /limpar-fila.
+ */
+async function cancelReadyCheck() {
+  const wasActive =
+    readyCheckActive;
+
+  if (readyCheckTimeout) {
+    clearTimeout(
+      readyCheckTimeout
+    );
+
+    readyCheckTimeout =
+      null;
+  }
+
+  if (
+    readyCheckMessage &&
+    wasActive
+  ) {
+    try {
+      const embed =
+        new EmbedBuilder()
+          .setTitle(
+            "Ready Check cancelado"
+          )
+          .setDescription(
+            "O Ready Check foi cancelado pela Staff."
+          )
+          .setFooter({
+            text:
+              "A fila foi limpa."
+          });
+
+      await readyCheckMessage.edit({
+        embeds: [
+          embed
+        ],
+
+        components: []
+      });
+    } catch (error) {
+      console.error(
+        "Erro ao atualizar Ready Check cancelado:",
+        error
+      );
+    }
+  }
+
+  resetReadyCheck();
+
+  return wasActive;
+}
+
+/*
  * Atualiza painel principal
  * sem dependência circular no
  * carregamento dos módulos.
@@ -542,6 +599,7 @@ function getReadyPlayers() {
 module.exports = {
   startReadyCheck,
   handleReadyCheck,
+  cancelReadyCheck,
 
   isReadyCheckActive,
 
