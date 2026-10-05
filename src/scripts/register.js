@@ -112,9 +112,18 @@ const commands = [
     .toJSON(),
 
   new SlashCommandBuilder()
-    .setName("limpar-fila")
+    .setName("remover-fila")
     .setDescription(
-      "Limpa a fila atual do matchmaking."
+      "Remove manualmente um jogador da fila."
+    )
+    .addUserOption(
+      (option) =>
+        option
+          .setName("jogador")
+          .setDescription(
+            "Jogador que será removido da fila."
+          )
+          .setRequired(true)
     )
     .toJSON()
 ];
