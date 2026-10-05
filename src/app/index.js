@@ -50,6 +50,14 @@ const handleSolicitacoes = require(
 );
 
 const {
+  handleClearQueueCommand,
+  handleClearQueueConfirm,
+  handleClearQueueCancel
+} = require(
+  "../scripts/clearQueue"
+);
+
+const {
   handleHistory,
   handleMatchLookup
 } = require(
@@ -294,6 +302,34 @@ client.on(
         )
       ) {
         return handleQueue(
+          interaction
+        );
+      }
+
+      // ======================================
+      // LIMPAR FILA - CONFIRMAR
+      // ======================================
+
+      if (
+        interaction.isButton() &&
+        interaction.customId ===
+          "clear_queue_confirm"
+      ) {
+        return handleClearQueueConfirm(
+          interaction
+        );
+      }
+
+      // ======================================
+      // LIMPAR FILA - CANCELAR
+      // ======================================
+
+      if (
+        interaction.isButton() &&
+        interaction.customId ===
+          "clear_queue_cancel"
+      ) {
+        return handleClearQueueCancel(
           interaction
         );
       }
@@ -578,6 +614,20 @@ client.on(
           "solicitacoes"
       ) {
         return handleSolicitacoes(
+          interaction
+        );
+      }
+
+      // ======================================
+      // /limpar-fila
+      // ======================================
+
+      if (
+        interaction.isChatInputCommand() &&
+        interaction.commandName ===
+          "limpar-fila"
+      ) {
+        return handleClearQueueCommand(
           interaction
         );
       }
