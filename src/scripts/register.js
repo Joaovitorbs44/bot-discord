@@ -109,6 +109,13 @@ const commands = [
     .setDescription(
       "Mostra novamente as solicitações de acesso pendentes."
     )
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("limpar-fila")
+    .setDescription(
+      "Limpa a fila atual do matchmaking."
+    )
     .toJSON()
 ];
 
