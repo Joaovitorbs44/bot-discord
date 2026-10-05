@@ -19,6 +19,13 @@ const {
   "./captains"
 );
 
+const {
+  logReadyCheckStarted,
+  logReadyCheckTimeout
+} = require(
+  "./logs"
+);
+
 const readyPlayers =
   new Set();
 
@@ -34,8 +41,12 @@ let readyCheckMessage =
 let readyCheckTimeout =
   null;
 
+let readyCheckClient =
+  null;
+
 const READY_CHECK_TIME =
-  config.matchmaking.readyCheckSeconds *
+  config.matchmaking
+    .readyCheckSeconds *
   1000;
 
 /*
@@ -52,7 +63,26 @@ async function startReadyCheck(
   if (
     !Array.isArray(players) ||
     players.length !==
-      config.matchmaking.requiredPlayers
+      config.matchmaking
+        .requiredPlayers
+  ) {
+    throw new Error(
+      "INVALID_READY_CHECK_PLAYERS"
+    );
+  }
+
+  const uniquePlayers =
+    new Set(
+      players.map(
+        (player) =>
+          player.discordId
+      )
+    );
+
+  if (
+    uniquePlayers.size !==
+    config.matchmaking
+      .requiredPlayers
   ) {
     throw new Error(
       "INVALID_READY_CHECK_PLAYERS"
@@ -65,11 +95,9 @@ async function startReadyCheck(
 
   readyPlayers.clear();
 
-  /*
-   * Marcamos como ativo antes
-   * de gerar o painel para que
-   * o botão seja criado habilitado.
-   */
+  readyCheckClient =
+    interaction.client;
+
   readyCheckActive =
     true;
 
@@ -81,6 +109,11 @@ async function startReadyCheck(
         ...createReadyCheckPanel(),
         fetchReply: true
       });
+
+    await logReadyCheckStarted(
+      interaction.client,
+      readyCheckPlayers
+    );
   } catch (error) {
     readyCheckActive =
       false;
@@ -91,6 +124,9 @@ async function startReadyCheck(
     readyPlayers.clear();
 
     readyCheckMessage =
+      null;
+
+    readyCheckClient =
       null;
 
     queueState.unlockQueue();
@@ -178,7 +214,7 @@ async function handleReadyCheck(
 }
 
 /*
- * Monta painel do Ready Check.
+ * Monta painel.
  */
 function createReadyCheckPanel() {
   const confirmed =
@@ -223,7 +259,8 @@ function createReadyCheckPanel() {
         "Ready Check"
       )
       .setDescription(
-        "Confirme sua presença para iniciar a partida.\n\n" +
+        "A partida foi encontrada.\n\n" +
+        "Confirme sua presença para continuar.\n\n" +
         `Você possui **${config.matchmaking.readyCheckSeconds} segundos** para confirmar.`
       )
       .addFields(
@@ -316,10 +353,6 @@ async function finishReadyCheck(
     ...readyCheckPlayers
   ];
 
-  /*
-   * O Ready Check terminou,
-   * mas a fila continua bloqueada.
-   */
   readyCheckActive =
     false;
 
@@ -330,7 +363,7 @@ async function finishReadyCheck(
           "Ready Check concluído"
         )
         .setDescription(
-          `Todos os ${playersForMatch.length} jogadores confirmaram presença.`
+          `✅ Todos os **${playersForMatch.length} jogadores** confirmaram presença.`
         )
         .setFooter({
           text:
@@ -346,10 +379,6 @@ async function finishReadyCheck(
     });
   }
 
-  /*
-   * Limpa somente os dados
-   * específicos do Ready Check.
-   */
   readyPlayers.clear();
 
   readyCheckPlayers =
@@ -358,17 +387,15 @@ async function finishReadyCheck(
   readyCheckMessage =
     null;
 
+  readyCheckClient =
+    null;
+
   try {
     await startCaptainVote(
       interaction,
       playersForMatch
     );
   } catch (error) {
-    /*
-     * Se a etapa seguinte falhar,
-     * libera a fila para evitar
-     * travamento permanente.
-     */
     queueState.unlockQueue();
 
     await updateQueueMessage();
@@ -378,7 +405,7 @@ async function finishReadyCheck(
 }
 
 /*
- * Tempo do Ready Check acabou.
+ * Timeout.
  */
 async function handleReadyCheckTimeout() {
   if (!readyCheckActive) {
@@ -407,6 +434,10 @@ async function handleReadyCheckTimeout() {
     queueState.removePlayer(
       player.discordId
     );
+
+    queueState.clearCooldown(
+      player.discordId
+    );
   }
 
   const missingList =
@@ -425,7 +456,7 @@ async function handleReadyCheckTimeout() {
         "Ready Check encerrado"
       )
       .setDescription(
-        `O tempo de ${config.matchmaking.readyCheckSeconds} segundos terminou.`
+        `O tempo de **${config.matchmaking.readyCheckSeconds} segundos** terminou.`
       )
       .addFields({
         name:
@@ -456,9 +487,16 @@ async function handleReadyCheckTimeout() {
     }
   }
 
+  if (readyCheckClient) {
+    await logReadyCheckTimeout(
+      readyCheckClient,
+      missingPlayers
+    );
+  }
+
   /*
-   * Ready Check falhou:
-   * libera novamente a fila.
+   * Libera novamente
+   * a fila.
    */
   queueState.unlockQueue();
 
@@ -468,66 +506,7 @@ async function handleReadyCheckTimeout() {
 }
 
 /*
- * Cancela administrativamente
- * um Ready Check ativo.
- *
- * Usado pelo comando /limpar-fila.
- */
-async function cancelReadyCheck() {
-  const wasActive =
-    readyCheckActive;
-
-  if (readyCheckTimeout) {
-    clearTimeout(
-      readyCheckTimeout
-    );
-
-    readyCheckTimeout =
-      null;
-  }
-
-  if (
-    readyCheckMessage &&
-    wasActive
-  ) {
-    try {
-      const embed =
-        new EmbedBuilder()
-          .setTitle(
-            "Ready Check cancelado"
-          )
-          .setDescription(
-            "O Ready Check foi cancelado pela Staff."
-          )
-          .setFooter({
-            text:
-              "A fila foi limpa."
-          });
-
-      await readyCheckMessage.edit({
-        embeds: [
-          embed
-        ],
-
-        components: []
-      });
-    } catch (error) {
-      console.error(
-        "Erro ao atualizar Ready Check cancelado:",
-        error
-      );
-    }
-  }
-
-  resetReadyCheck();
-
-  return wasActive;
-}
-
-/*
- * Atualiza painel principal
- * sem dependência circular no
- * carregamento dos módulos.
+ * Atualiza painel principal.
  */
 async function updateQueueMessage() {
   const queueMessage =
@@ -556,7 +535,8 @@ async function updateQueueMessage() {
 }
 
 /*
- * Limpa estado do Ready Check.
+ * Reseta estado interno
+ * do Ready Check.
  */
 function resetReadyCheck() {
   if (readyCheckTimeout) {
@@ -577,6 +557,9 @@ function resetReadyCheck() {
   readyPlayers.clear();
 
   readyCheckMessage =
+    null;
+
+  readyCheckClient =
     null;
 }
 
@@ -599,7 +582,6 @@ function getReadyPlayers() {
 module.exports = {
   startReadyCheck,
   handleReadyCheck,
-  cancelReadyCheck,
 
   isReadyCheckActive,
 
