@@ -11,7 +11,8 @@ const requiredVariables = [
   "QUEUE_CHANNEL_ID",
   "RANKING_CHANNEL_ID",
   "MAP_VETO_CHANNEL_ID",
-  "DRAFT_CHANNEL_ID"
+  "DRAFT_CHANNEL_ID",
+  "LOG_CHANNEL_ID"
 ];
 
 for (const variable of requiredVariables) {
@@ -24,11 +25,14 @@ for (const variable of requiredVariables) {
 
 module.exports = {
   discord: {
-    token: process.env.DISCORD_TOKEN,
+    token:
+      process.env.DISCORD_TOKEN,
 
-    clientId: process.env.CLIENT_ID,
+    clientId:
+      process.env.CLIENT_ID,
 
-    guildId: process.env.GUILD_ID,
+    guildId:
+      process.env.GUILD_ID,
 
     accessChannelId:
       process.env.ACCESS_CHANNEL_ID,
@@ -52,7 +56,10 @@ module.exports = {
       process.env.MAP_VETO_CHANNEL_ID,
 
     draftChannelId:
-      process.env.DRAFT_CHANNEL_ID
+      process.env.DRAFT_CHANNEL_ID,
+
+    logChannelId:
+      process.env.LOG_CHANNEL_ID
   },
 
   matchmaking: {
@@ -64,7 +71,9 @@ module.exports = {
 
     lossPoints: -3,
 
-    readyCheckSeconds: 60
+    readyCheckSeconds: 60,
+
+    queueCooldownSeconds: 5
   },
 
   seasons: {
