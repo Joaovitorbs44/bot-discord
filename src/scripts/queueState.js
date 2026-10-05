@@ -1,12 +1,22 @@
-const queue = new Map();
+const queue =
+  new Map();
 
-let queueMessage = null;
-let queueLocked = false;
+const cooldowns =
+  new Map();
+
+let queueMessage =
+  null;
+
+let queueLocked =
+  false;
 
 /*
- * Adiciona um jogador à fila.
+ * Adiciona um jogador
+ * à fila.
  */
-function addPlayer(player) {
+function addPlayer(
+  player
+) {
   if (
     !player ||
     !player.discordId
@@ -15,7 +25,9 @@ function addPlayer(player) {
   }
 
   if (
-    queue.has(player.discordId)
+    queue.has(
+      player.discordId
+    )
   ) {
     return false;
   }
@@ -31,7 +43,9 @@ function addPlayer(player) {
 /*
  * Remove um jogador.
  */
-function removePlayer(discordId) {
+function removePlayer(
+  discordId
+) {
   return queue.delete(
     discordId
   );
@@ -40,8 +54,14 @@ function removePlayer(discordId) {
 /*
  * Remove vários jogadores.
  */
-function removePlayers(discordIds) {
-  if (!Array.isArray(discordIds)) {
+function removePlayers(
+  discordIds
+) {
+  if (
+    !Array.isArray(
+      discordIds
+    )
+  ) {
     return;
   }
 
@@ -56,33 +76,28 @@ function removePlayers(discordIds) {
 }
 
 /*
- * Limpa completamente a fila.
- *
- * Retorna quantos jogadores
- * estavam na fila.
+ * Limpa completamente
+ * a fila.
  */
 function clearQueue() {
-  const removedPlayers =
-    queue.size;
-
   queue.clear();
-
-  return removedPlayers;
 }
 
 /*
- * Verifica se o jogador
- * está na fila.
+ * Verifica se determinado
+ * jogador está na fila.
  */
-function hasPlayer(discordId) {
+function hasPlayer(
+  discordId
+) {
   return queue.has(
     discordId
   );
 }
 
 /*
- * Retorna uma cópia dos
- * jogadores da fila.
+ * Retorna os jogadores
+ * atuais da fila.
  */
 function getPlayers() {
   return Array.from(
@@ -91,7 +106,8 @@ function getPlayers() {
 }
 
 /*
- * Quantidade de jogadores.
+ * Retorna a quantidade
+ * de jogadores.
  */
 function getSize() {
   return queue.size;
@@ -101,13 +117,16 @@ function getSize() {
  * Salva a mensagem principal
  * do painel da fila.
  */
-function setQueueMessage(message) {
+function setQueueMessage(
+  message
+) {
   queueMessage =
     message;
 }
 
 /*
- * Retorna a mensagem principal.
+ * Retorna a mensagem
+ * principal da fila.
  */
 function getQueueMessage() {
   return queueMessage;
@@ -115,15 +134,6 @@ function getQueueMessage() {
 
 /*
  * Bloqueia a fila.
- *
- * O bloqueio começa quando
- * a fila fica completa e termina
- * somente quando:
- *
- * - Ready Check falha;
- * - formação da partida falha;
- * - partida é criada;
- * - Staff limpa a fila.
  */
 function lockQueue() {
   queueLocked =
@@ -139,10 +149,86 @@ function unlockQueue() {
 }
 
 /*
- * Verifica se está bloqueada.
+ * Verifica se a fila
+ * está bloqueada.
  */
 function isQueueLocked() {
   return queueLocked;
+}
+
+/*
+ * Define cooldown para
+ * determinado jogador.
+ */
+function setCooldown(
+  discordId
+) {
+  cooldowns.set(
+    discordId,
+    Date.now()
+  );
+}
+
+/*
+ * Retorna quantos milissegundos
+ * ainda faltam para o jogador
+ * poder usar a fila novamente.
+ */
+function getCooldownRemaining(
+  discordId,
+  cooldownSeconds
+) {
+  const lastAction =
+    cooldowns.get(
+      discordId
+    );
+
+  if (!lastAction) {
+    return 0;
+  }
+
+  const cooldownMs =
+    cooldownSeconds *
+    1000;
+
+  const elapsed =
+    Date.now() -
+    lastAction;
+
+  const remaining =
+    cooldownMs -
+    elapsed;
+
+  if (
+    remaining <= 0
+  ) {
+    cooldowns.delete(
+      discordId
+    );
+
+    return 0;
+  }
+
+  return remaining;
+}
+
+/*
+ * Remove o cooldown
+ * de um jogador.
+ */
+function clearCooldown(
+  discordId
+) {
+  cooldowns.delete(
+    discordId
+  );
+}
+
+/*
+ * Limpa todos os cooldowns.
+ */
+function clearCooldowns() {
+  cooldowns.clear();
 }
 
 module.exports = {
@@ -160,5 +246,10 @@ module.exports = {
 
   lockQueue,
   unlockQueue,
-  isQueueLocked
+  isQueueLocked,
+
+  setCooldown,
+  getCooldownRemaining,
+  clearCooldown,
+  clearCooldowns
 };
