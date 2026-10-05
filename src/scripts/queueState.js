@@ -56,6 +56,21 @@ function removePlayers(discordIds) {
 }
 
 /*
+ * Limpa completamente a fila.
+ *
+ * Retorna quantos jogadores
+ * estavam na fila.
+ */
+function clearQueue() {
+  const removedPlayers =
+    queue.size;
+
+  queue.clear();
+
+  return removedPlayers;
+}
+
+/*
  * Verifica se o jogador
  * está na fila.
  */
@@ -107,7 +122,8 @@ function getQueueMessage() {
  *
  * - Ready Check falha;
  * - formação da partida falha;
- * - partida é criada.
+ * - partida é criada;
+ * - Staff limpa a fila.
  */
 function lockQueue() {
   queueLocked =
@@ -133,6 +149,7 @@ module.exports = {
   addPlayer,
   removePlayer,
   removePlayers,
+  clearQueue,
 
   hasPlayer,
   getPlayers,
