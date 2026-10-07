@@ -26,6 +26,8 @@ let availablePlayers = [];
 
 let currentRound = 0;
 
+let draftMessage = null;
+
 /*
  * Ordem 1-2-2-2-1.
  */
@@ -179,9 +181,40 @@ async function startDraft(
   draftActive = true;
 
   try {
-    await interaction.followUp(
-      createDraftPanel()
-    );
+    /*
+     * Busca automaticamente o canal
+     * configurado para o pick de jogadores.
+     */
+    const channel =
+      await interaction.client.channels.fetch(
+        config.discord.pickPlayersChannelId
+      );
+
+    if (
+      !channel ||
+      !channel.isTextBased()
+    ) {
+      throw new Error(
+        "INVALID_PICK_PLAYERS_CHANNEL"
+      );
+    }
+
+    /*
+     * Envia o draft no canal correto.
+     */
+    draftMessage =
+      await channel.send(
+        createDraftPanel()
+      );
+
+    /*
+     * Avisa no canal anterior que
+     * o draft foi movido.
+     */
+    await interaction.followUp({
+      content:
+        `🎯 O draft de jogadores foi iniciado em <#${channel.id}>.`
+    });
   } catch (error) {
     resetDraft();
 
@@ -682,6 +715,8 @@ function resetDraft() {
   availablePlayers = [];
 
   currentRound = 0;
+
+  draftMessage = null;
 }
 
 function isDraftActive() {
