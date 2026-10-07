@@ -14,16 +14,19 @@ const {
   "./side"
 );
 
+/*
+ * Map Pool competitivo R6
+ */
 const MAP_POOL = [
   "Bank",
   "Border",
   "Chalet",
   "Clubhouse",
-  "Consulate",
+  "Villa",
   "Kafe Dostoyevsky",
   "Lair",
   "Nighthaven Labs",
-  "Skyscraper"
+  "Fortress"
 ];
 
 let vetoActive = false;
