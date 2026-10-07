@@ -14,23 +14,14 @@ const {
   "./drafts"
 );
 
-let captainVoteActive =
-  false;
+let captainVoteActive = false;
+let captainPlayers = [];
 
-let captainPlayers =
-  [];
+const votes = new Map();
 
-const votes =
-  new Map();
-
-let captainA =
-  null;
-
-let captainB =
-  null;
-
-let captainVoteMessage =
-  null;
+let captainA = null;
+let captainB = null;
+let captainVoteMessage = null;
 
 /*
  * Inicia a votação
@@ -40,21 +31,12 @@ async function startCaptainVote(
   interaction,
   players
 ) {
-  /*
-   * Não permite duas votações
-   * simultâneas.
-   */
   if (captainVoteActive) {
     throw new Error(
       "CAPTAIN_VOTE_ALREADY_ACTIVE"
     );
   }
 
-  /*
-   * O matchmaking atual
-   * precisa exatamente de
-   * 10 jogadores.
-   */
   if (
     !Array.isArray(players) ||
     players.length !==
@@ -65,9 +47,6 @@ async function startCaptainVote(
     );
   }
 
-  /*
-   * Verifica jogadores duplicados.
-   */
   const uniquePlayers =
     new Set(
       players.map(
@@ -85,10 +64,6 @@ async function startCaptainVote(
     );
   }
 
-  /*
-   * Valida os dados mínimos
-   * necessários de cada jogador.
-   */
   const invalidPlayer =
     players.some(
       (player) =>
@@ -110,17 +85,11 @@ async function startCaptainVote(
 
   votes.clear();
 
-  captainA =
-    null;
+  captainA = null;
+  captainB = null;
+  captainVoteMessage = null;
 
-  captainB =
-    null;
-
-  captainVoteMessage =
-    null;
-
-  captainVoteActive =
-    true;
+  captainVoteActive = true;
 
   try {
     captainVoteMessage =
@@ -226,10 +195,6 @@ async function handleCaptainVote(
     });
   }
 
-  /*
-   * Somente os jogadores
-   * da partida podem votar.
-   */
   const playerIsInMatch =
     captainPlayers.some(
       (player) =>
@@ -246,10 +211,6 @@ async function handleCaptainVote(
     });
   }
 
-  /*
-   * Cada jogador possui
-   * somente um voto.
-   */
   if (
     votes.has(
       interaction.user.id
@@ -266,10 +227,6 @@ async function handleCaptainVote(
   const selectedPlayerId =
     interaction.values[0];
 
-  /*
-   * Não permite votar
-   * em si mesmo.
-   */
   if (
     selectedPlayerId ===
     interaction.user.id
@@ -298,25 +255,15 @@ async function handleCaptainVote(
     });
   }
 
-  /*
-   * Registra o voto.
-   */
   votes.set(
     interaction.user.id,
     selectedPlayerId
   );
 
-  /*
-   * Atualiza o painel.
-   */
   await interaction.update(
     createCaptainVotePanel()
   );
 
-  /*
-   * Confirma apenas para
-   * quem votou.
-   */
   await interaction.followUp({
     content:
       `Seu voto em **${selectedPlayer.nickname}** foi registrado.`,
@@ -324,9 +271,6 @@ async function handleCaptainVote(
     ephemeral: true
   });
 
-  /*
-   * Todos os jogadores votaram.
-   */
   if (
     votes.size ===
     captainPlayers.length
@@ -344,9 +288,6 @@ function countVotes() {
   const result =
     new Map();
 
-  /*
-   * Começa todos com zero.
-   */
   for (
     const player
     of captainPlayers
@@ -357,9 +298,6 @@ function countVotes() {
     );
   }
 
-  /*
-   * Soma os votos.
-   */
   for (
     const selectedPlayerId
     of votes.values()
@@ -388,10 +326,6 @@ async function finishCaptainVote(
     return;
   }
 
-  /*
-   * Segurança:
-   * todos precisam ter votado.
-   */
   if (
     votes.size !==
     captainPlayers.length
@@ -414,13 +348,6 @@ async function finishCaptainVote(
       })
     );
 
-  /*
-   * Embaralha primeiro.
-   *
-   * Caso dois jogadores tenham
-   * a mesma quantidade de votos,
-   * o desempate será aleatório.
-   */
   shuffleArray(
     ranking
   );
@@ -436,9 +363,6 @@ async function finishCaptainVote(
   captainB =
     ranking[1];
 
-  /*
-   * Segurança adicional.
-   */
   if (
     !captainA ||
     !captainB ||
@@ -452,22 +376,26 @@ async function finishCaptainVote(
     );
   }
 
-  captainVoteActive =
-    false;
+  captainVoteActive = false;
 
-  /*
-   * Lista completa dos votos.
-   */
   const resultList =
     ranking
       .map(
         (player) =>
-          `${player.discordId === captainA.discordId ||
-          player.discordId === captainB.discordId
-            ? "👑"
-            : "•"} ` +
+          `${
+            player.discordId ===
+              captainA.discordId ||
+            player.discordId ===
+              captainB.discordId
+              ? "👑"
+              : "•"
+          } ` +
           `${player.nickname} — ` +
-          `${player.votes} voto${player.votes === 1 ? "" : "s"}`
+          `${player.votes} voto${
+            player.votes === 1
+              ? ""
+              : "s"
+          }`
       )
       .join("\n");
 
@@ -495,11 +423,6 @@ async function finishCaptainVote(
           "Rainbow Six Siege • Draft iniciado"
       });
 
-  /*
-   * Fecha o painel antigo
-   * para ninguém tentar votar
-   * depois da votação terminar.
-   */
   if (captainVoteMessage) {
     try {
       await captainVoteMessage.edit({
@@ -509,48 +432,26 @@ async function finishCaptainVote(
 
         components: []
       });
-    } catch (error) {
-      /*
-       * Caso a mensagem tenha sido
-       * apagada, ainda continuamos
-       * o matchmaking normalmente.
-       */
+    } catch {
+      // Continua mesmo se
+      // a mensagem foi apagada.
     }
   }
 
-  /*
-   * Guardamos os jogadores antes
-   * de iniciar o draft.
-   */
   const playersForDraft = [
     ...captainPlayers
   ];
 
-  /*
-   * Inicia o draft.
-   */
-  try {
-    await startDraft(
-      interaction,
-      playersForDraft,
-      captainA,
-      captainB
-    );
-  } catch (error) {
-    /*
-     * Mantemos capitão A/B para
-     * facilitar diagnóstico,
-     * mas a votação continua
-     * encerrada.
-     */
-    throw error;
-  }
+  await startDraft(
+    interaction,
+    playersForDraft,
+    captainA,
+    captainB
+  );
 }
 
 /*
- * Embaralha o array.
- *
- * Usado somente para desempates.
+ * Embaralha array.
  */
 function shuffleArray(
   array
@@ -580,9 +481,7 @@ function shuffleArray(
 }
 
 /*
- * Limita textos para respeitar
- * os limites dos componentes
- * do Discord.
+ * Limita texto.
  */
 function limitText(
   value,
@@ -610,26 +509,20 @@ function limitText(
 }
 
 /*
- * Limpa completamente o
- * estado da votação.
+ * Limpa completamente
+ * o estado da votação.
  */
 function resetCaptainVote() {
-  captainVoteActive =
-    false;
+  captainVoteActive = false;
 
-  captainPlayers =
-    [];
+  captainPlayers = [];
 
   votes.clear();
 
-  captainA =
-    null;
+  captainA = null;
+  captainB = null;
 
-  captainB =
-    null;
-
-  captainVoteMessage =
-    null;
+  captainVoteMessage = null;
 }
 
 function isCaptainVoteActive() {
@@ -651,13 +544,26 @@ function getCaptains() {
   };
 }
 
+/*
+ * Permite que o reset global
+ * descubra quem participava
+ * da formação.
+ */
+function getCaptainPlayers() {
+  return [
+    ...captainPlayers
+  ];
+}
+
 module.exports = {
   startCaptainVote,
   handleCaptainVote,
 
+  resetCaptainVote,
   isCaptainVoteActive,
 
   getCaptainA,
   getCaptainB,
-  getCaptains
+  getCaptains,
+  getCaptainPlayers
 };
