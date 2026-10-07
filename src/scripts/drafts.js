@@ -27,22 +27,7 @@ let availablePlayers = [];
 let currentRound = 0;
 
 /*
- * Ordem do draft.
- *
- * Capitães já fazem parte
- * dos seus respectivos times.
- *
- * Restam 8 jogadores:
- *
- * A escolhe 1
- * B escolhe 2
- * A escolhe 2
- * B escolhe 2
- * A escolhe 1
- *
- * Resultado:
- * Time A = 5
- * Time B = 5
+ * Ordem 1-2-2-2-1.
  */
 const draftRounds = [
   {
@@ -76,20 +61,12 @@ async function startDraft(
   firstCaptain,
   secondCaptain
 ) {
-  /*
-   * Não permite iniciar outro
-   * draft enquanto existe um ativo.
-   */
   if (draftActive) {
     throw new Error(
       "DRAFT_ALREADY_ACTIVE"
     );
   }
 
-  /*
-   * O sistema atual foi criado
-   * especificamente para 5v5.
-   */
   if (
     !Array.isArray(players) ||
     players.length !==
@@ -100,9 +77,6 @@ async function startDraft(
     );
   }
 
-  /*
-   * Valida os capitães.
-   */
   if (
     !firstCaptain ||
     !secondCaptain ||
@@ -114,10 +88,6 @@ async function startDraft(
     );
   }
 
-  /*
-   * Um jogador não pode ser
-   * os dois capitães.
-   */
   if (
     firstCaptain.discordId ===
     secondCaptain.discordId
@@ -127,11 +97,6 @@ async function startDraft(
     );
   }
 
-  /*
-   * Confirma que os dois capitães
-   * realmente fazem parte dos
-   * jogadores selecionados.
-   */
   const captainAExists =
     players.some(
       (player) =>
@@ -155,10 +120,6 @@ async function startDraft(
     );
   }
 
-  /*
-   * Garante que não existam
-   * jogadores duplicados.
-   */
   const uniquePlayers =
     new Set(
       players.map(
@@ -190,10 +151,6 @@ async function startDraft(
     captainB
   ];
 
-  /*
-   * Remove os dois capitães
-   * da lista disponível.
-   */
   availablePlayers =
     players.filter(
       (player) =>
@@ -203,17 +160,13 @@ async function startDraft(
           captainB.discordId
     );
 
-  /*
-   * Em um 5v5 devem restar
-   * exatamente 8 jogadores.
-   */
-  const expectedAvailablePlayers =
-    config.matchmaking.requiredPlayers -
-    2;
+  const expected =
+    config.matchmaking
+      .requiredPlayers - 2;
 
   if (
     availablePlayers.length !==
-    expectedAvailablePlayers
+    expected
   ) {
     resetDraft();
 
@@ -223,7 +176,6 @@ async function startDraft(
   }
 
   currentRound = 0;
-
   draftActive = true;
 
   try {
@@ -238,7 +190,7 @@ async function startDraft(
 }
 
 /*
- * Cria o painel da rodada atual.
+ * Cria o painel.
  */
 function createDraftPanel() {
   const round =
@@ -246,10 +198,6 @@ function createDraftPanel() {
       currentRound
     ];
 
-  /*
-   * Se todas as rodadas acabaram,
-   * mostra o resultado.
-   */
   if (!round) {
     return createFinishedDraftPanel();
   }
@@ -288,7 +236,11 @@ function createDraftPanel() {
       )
       .setDescription(
         `É a vez de <@${currentCaptain.discordId}> escolher.\n\n` +
-        `Escolha **${round.picks} jogador${round.picks > 1 ? "es" : ""}**.`
+        `Escolha **${round.picks} jogador${
+          round.picks > 1
+            ? "es"
+            : ""
+        }**.`
       )
       .addFields(
         {
@@ -326,10 +278,6 @@ function createDraftPanel() {
           `Rodada ${currentRound + 1}/${draftRounds.length}`
       });
 
-  /*
-   * Segurança contra estado
-   * inconsistente.
-   */
   if (
     availablePlayers.length <
     round.picks
@@ -403,6 +351,7 @@ async function handleDraftPick(
     return interaction.reply({
       content:
         "Não existe um draft ativo.",
+
       ephemeral: true
     });
   }
@@ -416,6 +365,7 @@ async function handleDraftPick(
     return interaction.reply({
       content:
         "O draft já terminou.",
+
       ephemeral: true
     });
   }
@@ -425,10 +375,6 @@ async function handleDraftPick(
       ? captainA
       : captainB;
 
-  /*
-   * Somente o capitão da rodada
-   * pode escolher.
-   */
   if (
     interaction.user.id !==
     currentCaptain.discordId
@@ -436,29 +382,27 @@ async function handleDraftPick(
     return interaction.reply({
       content:
         `Agora é a vez de **${currentCaptain.nickname}** escolher.`,
+
       ephemeral: true
     });
   }
 
-  /*
-   * O número de escolhas precisa
-   * ser exatamente o da rodada.
-   */
   if (
     interaction.values.length !==
     round.picks
   ) {
     return interaction.reply({
       content:
-        `Você precisa escolher exatamente ${round.picks} jogador${round.picks > 1 ? "es" : ""}.`,
+        `Você precisa escolher exatamente ${round.picks} jogador${
+          round.picks > 1
+            ? "es"
+            : ""
+        }.`,
+
       ephemeral: true
     });
   }
 
-  /*
-   * Segurança contra IDs
-   * duplicados na interação.
-   */
   const uniqueSelectedIds =
     new Set(
       interaction.values
@@ -471,12 +415,12 @@ async function handleDraftPick(
     return interaction.reply({
       content:
         "Existem jogadores duplicados na seleção.",
+
       ephemeral: true
     });
   }
 
-  const selectedPlayers =
-    [];
+  const selectedPlayers = [];
 
   for (
     const discordId
@@ -493,6 +437,7 @@ async function handleDraftPick(
       return interaction.reply({
         content:
           "Um dos jogadores selecionados não está mais disponível.",
+
         ephemeral: true
       });
     }
@@ -502,10 +447,6 @@ async function handleDraftPick(
     );
   }
 
-  /*
-   * Adiciona os jogadores ao
-   * time do capitão da rodada.
-   */
   if (
     round.captain === "A"
   ) {
@@ -518,10 +459,6 @@ async function handleDraftPick(
     );
   }
 
-  /*
-   * Remove os escolhidos da
-   * lista disponível.
-   */
   const selectedIds =
     new Set(
       selectedPlayers.map(
@@ -540,9 +477,6 @@ async function handleDraftPick(
 
   currentRound++;
 
-  /*
-   * Última rodada concluída.
-   */
   if (
     currentRound >=
     draftRounds.length
@@ -552,10 +486,6 @@ async function handleDraftPick(
     );
   }
 
-  /*
-   * Atualiza a mesma mensagem
-   * para a próxima rodada.
-   */
   await interaction.update(
     createDraftPanel()
   );
@@ -567,10 +497,6 @@ async function handleDraftPick(
 async function finishDraft(
   interaction
 ) {
-  /*
-   * Antes de avançar, verificamos
-   * se realmente temos 5x5.
-   */
   if (
     teamA.length !==
       config.matchmaking.teamSize ||
@@ -583,10 +509,6 @@ async function finishDraft(
     );
   }
 
-  /*
-   * Confere novamente se nenhum
-   * jogador apareceu nos dois times.
-   */
   const allPlayers = [
     ...teamA,
     ...teamB
@@ -609,21 +531,12 @@ async function finishDraft(
     );
   }
 
-  draftActive =
-    false;
+  draftActive = false;
 
-  /*
-   * Primeiro atualizamos a mensagem
-   * do draft.
-   */
   await interaction.update(
     createFinishedDraftPanel()
   );
 
-  /*
-   * Fazemos uma cópia antes de
-   * iniciar a próxima etapa.
-   */
   const draftResult = {
     teamA: [
       ...teamA
@@ -634,11 +547,6 @@ async function finishDraft(
     ]
   };
 
-  /*
-   * Inicia o veto de mapas.
-   *
-   * A fila continua bloqueada.
-   */
   await startMapVeto(
     interaction,
     draftResult,
@@ -706,9 +614,6 @@ function createFinishedDraftPanel() {
   };
 }
 
-/*
- * Cria lista de jogadores.
- */
 function createPlayerList(
   players,
   captain
@@ -737,10 +642,6 @@ function createPlayerList(
     .join("\n");
 }
 
-/*
- * Limita texto para os limites
- * dos componentes do Discord.
- */
 function limitText(
   value,
   maxLength
@@ -767,29 +668,20 @@ function limitText(
 }
 
 /*
- * Limpa o estado do draft.
+ * Reset completo do draft.
  */
 function resetDraft() {
-  draftActive =
-    false;
+  draftActive = false;
 
-  captainA =
-    null;
+  captainA = null;
+  captainB = null;
 
-  captainB =
-    null;
+  teamA = [];
+  teamB = [];
 
-  teamA =
-    [];
+  availablePlayers = [];
 
-  teamB =
-    [];
-
-  availablePlayers =
-    [];
-
-  currentRound =
-    0;
+  currentRound = 0;
 }
 
 function isDraftActive() {
@@ -812,6 +704,7 @@ module.exports = {
   startDraft,
   handleDraftPick,
 
+  resetDraft,
   isDraftActive,
   getTeams
 };
