@@ -14,13 +14,6 @@ const {
   "./side"
 );
 
-/*
- * Map pool do lobby.
- *
- * Podemos alterar os mapas
- * futuramente sem modificar
- * a lógica do veto.
- */
 const MAP_POOL = [
   "Bank",
   "Border",
@@ -33,38 +26,23 @@ const MAP_POOL = [
   "Skyscraper"
 ];
 
-/*
- * Estado do veto.
- */
-let vetoActive =
-  false;
+let vetoActive = false;
 
-let captainA =
-  null;
+let captainA = null;
+let captainB = null;
 
-let captainB =
-  null;
+let teamA = [];
+let teamB = [];
 
-let teamA =
-  [];
+let availableMaps = [];
+let bannedMaps = [];
 
-let teamB =
-  [];
+let currentCaptain = "A";
 
-let availableMaps =
-  [];
-
-let bannedMaps =
-  [];
-
-let currentCaptain =
-  "A";
-
-let selectedMap =
-  null;
+let selectedMap = null;
 
 /*
- * Inicia o veto de mapas.
+ * Inicia o veto.
  */
 async function startMapVeto(
   interaction,
@@ -72,19 +50,12 @@ async function startMapVeto(
   firstCaptain,
   secondCaptain
 ) {
-  /*
-   * Não permite dois vetos
-   * simultâneos.
-   */
   if (vetoActive) {
     throw new Error(
       "MAP_VETO_ALREADY_ACTIVE"
     );
   }
 
-  /*
-   * Validação dos times.
-   */
   if (
     !teams ||
     !Array.isArray(
@@ -99,10 +70,6 @@ async function startMapVeto(
     );
   }
 
-  /*
-   * Cada time precisa ter
-   * exatamente 5 jogadores.
-   */
   if (
     teams.teamA.length !==
       config.matchmaking.teamSize ||
@@ -114,9 +81,6 @@ async function startMapVeto(
     );
   }
 
-  /*
-   * Validação dos capitães.
-   */
   if (
     !firstCaptain ||
     !secondCaptain ||
@@ -128,10 +92,6 @@ async function startMapVeto(
     );
   }
 
-  /*
-   * Os capitães precisam
-   * ser diferentes.
-   */
   if (
     firstCaptain.discordId ===
     secondCaptain.discordId
@@ -141,10 +101,6 @@ async function startMapVeto(
     );
   }
 
-  /*
-   * Capitão A precisa fazer
-   * parte do Time A.
-   */
   const captainAInTeam =
     teams.teamA.some(
       (player) =>
@@ -152,10 +108,6 @@ async function startMapVeto(
         firstCaptain.discordId
     );
 
-  /*
-   * Capitão B precisa fazer
-   * parte do Time B.
-   */
   const captainBInTeam =
     teams.teamB.some(
       (player) =>
@@ -172,10 +124,6 @@ async function startMapVeto(
     );
   }
 
-  /*
-   * Confere se temos exatamente
-   * os 10 jogadores esperados.
-   */
   const allPlayers = [
     ...teams.teamA,
     ...teams.teamB
@@ -198,9 +146,6 @@ async function startMapVeto(
     );
   }
 
-  /*
-   * Inicializa o estado.
-   */
   captainA =
     firstCaptain;
 
@@ -219,21 +164,13 @@ async function startMapVeto(
     ...MAP_POOL
   ];
 
-  bannedMaps =
-    [];
+  bannedMaps = [];
 
-  selectedMap =
-    null;
+  selectedMap = null;
 
-  /*
-   * Capitão A começa
-   * o primeiro ban.
-   */
-  currentCaptain =
-    "A";
+  currentCaptain = "A";
 
-  vetoActive =
-    true;
+  vetoActive = true;
 
   try {
     await interaction.followUp(
@@ -247,8 +184,7 @@ async function startMapVeto(
 }
 
 /*
- * Cria o painel atual
- * do veto.
+ * Painel atual.
  */
 function createMapVetoPanel() {
   if (!vetoActive) {
@@ -325,14 +261,6 @@ function createMapVetoPanel() {
           `${availableMaps.length} mapas restantes • Capitão ${currentCaptain}`
       });
 
-  /*
-   * O painel só deve existir
-   * enquanto houver pelo menos
-   * dois mapas.
-   *
-   * Quando sobrar apenas um,
-   * o veto é encerrado.
-   */
   if (
     availableMaps.length <= 1
   ) {
@@ -413,10 +341,6 @@ async function handleMapVeto(
     });
   }
 
-  /*
-   * Somente o capitão da vez
-   * pode realizar o ban.
-   */
   if (
     interaction.user.id !==
     captain.discordId
@@ -432,9 +356,6 @@ async function handleMapVeto(
   const selected =
     interaction.values[0];
 
-  /*
-   * Valida o mapa recebido.
-   */
   if (
     !selected ||
     !availableMaps.includes(
@@ -449,34 +370,22 @@ async function handleMapVeto(
     });
   }
 
-  /*
-   * Registra o ban.
-   */
   bannedMaps.push({
     map:
       selected,
 
-    captain:
-      captain,
+    captain,
 
     captainTeam:
       currentCaptain
   });
 
-  /*
-   * Remove o mapa.
-   */
   availableMaps =
     availableMaps.filter(
       (map) =>
         map !== selected
     );
 
-  /*
-   * Quando restar somente
-   * um mapa, ele será
-   * automaticamente escolhido.
-   */
   if (
     availableMaps.length === 1
   ) {
@@ -488,10 +397,6 @@ async function handleMapVeto(
     );
   }
 
-  /*
-   * Segurança contra um estado
-   * impossível.
-   */
   if (
     availableMaps.length === 0
   ) {
@@ -500,17 +405,11 @@ async function handleMapVeto(
     );
   }
 
-  /*
-   * Alterna o capitão.
-   */
   currentCaptain =
     currentCaptain === "A"
       ? "B"
       : "A";
 
-  /*
-   * Atualiza a mesma mensagem.
-   */
   await interaction.update(
     createMapVetoPanel()
   );
@@ -526,10 +425,6 @@ async function finishMapVeto(
     return;
   }
 
-  /*
-   * Precisa existir exatamente
-   * um mapa restante.
-   */
   if (
     availableMaps.length !== 1
   ) {
@@ -541,10 +436,6 @@ async function finishMapVeto(
   selectedMap =
     availableMaps[0];
 
-  /*
-   * Copiamos os dados antes
-   * de seguir para a próxima etapa.
-   */
   const vetoResult = {
     map:
       selectedMap,
@@ -568,8 +459,7 @@ async function finishMapVeto(
     ]
   };
 
-  vetoActive =
-    false;
+  vetoActive = false;
 
   const bannedList =
     bannedMaps.length > 0
@@ -618,9 +508,6 @@ async function finishMapVeto(
           "Escolha de lado iniciada"
       });
 
-  /*
-   * Fecha o select do veto.
-   */
   await interaction.update({
     embeds: [
       embed
@@ -629,11 +516,6 @@ async function finishMapVeto(
     components: []
   });
 
-  /*
-   * Inicia a escolha de lado.
-   *
-   * A fila continua bloqueada.
-   */
   await startSideChoice(
     interaction,
     {
@@ -658,56 +540,33 @@ async function finishMapVeto(
 }
 
 /*
- * Limpa o estado do veto.
+ * Reset completo do veto.
  */
 function resetMapVeto() {
-  vetoActive =
-    false;
+  vetoActive = false;
 
-  captainA =
-    null;
+  captainA = null;
+  captainB = null;
 
-  captainB =
-    null;
+  teamA = [];
+  teamB = [];
 
-  teamA =
-    [];
+  availableMaps = [];
+  bannedMaps = [];
 
-  teamB =
-    [];
+  currentCaptain = "A";
 
-  availableMaps =
-    [];
-
-  bannedMaps =
-    [];
-
-  currentCaptain =
-    "A";
-
-  selectedMap =
-    null;
+  selectedMap = null;
 }
 
-/*
- * Retorna se existe
- * um veto ativo.
- */
 function isMapVetoActive() {
   return vetoActive;
 }
 
-/*
- * Retorna o mapa final.
- */
 function getSelectedMap() {
   return selectedMap;
 }
 
-/*
- * Retorna os dados atuais
- * do veto.
- */
 function getVetoData() {
   return {
     map:
@@ -739,7 +598,9 @@ module.exports = {
   startMapVeto,
   handleMapVeto,
 
+  resetMapVeto,
   isMapVetoActive,
+
   getSelectedMap,
   getVetoData
 };
