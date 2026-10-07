@@ -1,0 +1,131 @@
+const config = require(
+  "../config/config"
+);
+
+const queueState = require(
+  "./queueState"
+);
+
+const {
+  updateQueuePanel
+} = require(
+  "./queue"
+);
+
+/*
+ * Verifica se o usuário
+ * possui o cargo da Staff.
+ */
+function isStaff(interaction) {
+  if (
+    !interaction.member
+  ) {
+    return false;
+  }
+
+  if (
+    interaction.member.roles &&
+    interaction.member.roles.cache
+  ) {
+    return interaction.member.roles.cache.has(
+      config.discord.staffRoleId
+    );
+  }
+
+  if (
+    Array.isArray(
+      interaction.member.roles
+    )
+  ) {
+    return interaction.member.roles.includes(
+      config.discord.staffRoleId
+    );
+  }
+
+  return false;
+}
+
+/*
+ * /remover-fila
+ */
+async function handleRemoveQueueCommand(
+  interaction
+) {
+  /*
+   * Responde imediatamente ao Discord
+   * para impedir que a interação expire.
+   */
+  await interaction.deferReply({
+    ephemeral: true
+  });
+
+  if (!isStaff(interaction)) {
+    return interaction.editReply({
+      content:
+        "Apenas membros da Staff podem remover jogadores da fila."
+    });
+  }
+
+  const target =
+    interaction.options.getUser(
+      "jogador",
+      true
+    );
+
+  /*
+   * Verifica se realmente está
+   * na fila.
+   */
+  if (
+    !queueState.hasPlayer(
+      target.id
+    )
+  ) {
+    return interaction.editReply({
+      content:
+        `<@${target.id}> não está na fila.`
+    });
+  }
+
+  /*
+   * Durante Ready Check ou formação
+   * da partida não permitimos remover
+   * somente um jogador, pois isso
+   * quebraria o estado dos 10 jogadores.
+   */
+  if (
+    queueState.isQueueLocked()
+  ) {
+    return interaction.editReply({
+      content:
+        "A fila está bloqueada porque uma partida está sendo formada. Use `/limpar-fila` para cancelar a formação e limpar toda a fila."
+    });
+  }
+
+  const removed =
+    queueState.removePlayer(
+      target.id
+    );
+
+  if (!removed) {
+    return interaction.editReply({
+      content:
+        "Não foi possível remover esse jogador da fila."
+    });
+  }
+
+  /*
+   * Atualiza o painel 5v5.
+   */
+  await updateQueuePanel();
+
+  return interaction.editReply({
+    content:
+      `✅ <@${target.id}> foi removido da fila por <@${interaction.user.id}>.\n\n` +
+      `Jogadores restantes: **${queueState.getSize()}/${config.matchmaking.requiredPlayers}**`
+  });
+}
+
+module.exports = {
+  handleRemoveQueueCommand
+};
