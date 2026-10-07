@@ -51,10 +51,6 @@ function isStaff(interaction) {
 async function handleRemoveQueueCommand(
   interaction
 ) {
-  /*
-   * Responde imediatamente ao Discord
-   * para impedir que a interação expire.
-   */
   await interaction.deferReply({
     ephemeral: true
   });
@@ -72,10 +68,6 @@ async function handleRemoveQueueCommand(
       true
     );
 
-  /*
-   * Verifica se realmente está
-   * na fila.
-   */
   if (
     !queueState.hasPlayer(
       target.id
@@ -88,17 +80,15 @@ async function handleRemoveQueueCommand(
   }
 
   /*
-   * Durante Ready Check ou formação
-   * da partida não permitimos remover
-   * somente um jogador, pois isso
-   * quebraria o estado dos 10 jogadores.
+   * Não remover individualmente
+   * durante formação da partida.
    */
   if (
     queueState.isQueueLocked()
   ) {
     return interaction.editReply({
       content:
-        "A fila está bloqueada porque uma partida está sendo formada. Use `/limpar-fila` para cancelar a formação e limpar toda a fila."
+        "A fila está bloqueada porque uma partida está sendo formada. Use `/limpar-fila` caso queira cancelar toda a formação."
     });
   }
 
@@ -107,6 +97,10 @@ async function handleRemoveQueueCommand(
       target.id
     );
 
+  queueState.clearCooldown(
+    target.id
+  );
+
   if (!removed) {
     return interaction.editReply({
       content:
@@ -114,15 +108,12 @@ async function handleRemoveQueueCommand(
     });
   }
 
-  /*
-   * Atualiza o painel 5v5.
-   */
   await updateQueuePanel();
 
   return interaction.editReply({
     content:
-      `✅ <@${target.id}> foi removido da fila por <@${interaction.user.id}>.\n\n` +
-      `Jogadores restantes: **${queueState.getSize()}/${config.matchmaking.requiredPlayers}**`
+      `✅ <@${target.id}> foi removido da fila.\n\n` +
+      `Jogadores na fila: **${queueState.getSize()}/${config.matchmaking.requiredPlayers}**`
   });
 }
 
