@@ -87,7 +87,8 @@ const handleSeasons =
 // ==========================================
 
 const {
-  handleQueue
+  handleQueue,
+  restoreQueuePanel
 } = require(
   "../scripts/queue"
 );
@@ -207,10 +208,38 @@ const client =
 
 client.once(
   Events.ClientReady,
-  (readyClient) => {
+  async (
+    readyClient
+  ) => {
     console.log(
       `Bot conectado como ${readyClient.user.tag}`
     );
+
+    /*
+     * Recupera automaticamente
+     * o painel da fila.
+     */
+    try {
+      const queueMessage =
+        await restoreQueuePanel(
+          readyClient
+        );
+
+      if (queueMessage) {
+        console.log(
+          "Fila restaurada e painel sincronizado."
+        );
+      } else {
+        console.warn(
+          "Não foi possível restaurar o painel da fila."
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Erro ao restaurar fila na inicialização:",
+        error
+      );
+    }
   }
 );
 
@@ -879,10 +908,6 @@ async function handleAccessRank(
 
   let requestId;
 
-  // ========================================
-  // SOLICITAÇÃO JÁ EXISTE
-  // ========================================
-
   if (existingRequest) {
     if (
       existingRequest.status ===
@@ -944,10 +969,6 @@ async function handleAccessRank(
     requestId =
       existingRequest.id;
   } else {
-    // ======================================
-    // PRIMEIRA SOLICITAÇÃO
-    // ======================================
-
     const result =
       db.prepare(`
         INSERT INTO access_requests (
@@ -980,10 +1001,6 @@ async function handleAccessRank(
       result.lastInsertRowid;
   }
 
-  // ========================================
-  // CANAL DA STAFF
-  // ========================================
-
   const staffChannel =
     await interaction.guild
       .channels.fetch(
@@ -998,10 +1015,6 @@ async function handleAccessRank(
       "Canal da Staff não encontrado."
     );
   }
-
-  // ========================================
-  // EMBED
-  // ========================================
 
   const embed =
     new EmbedBuilder()
@@ -1050,10 +1063,6 @@ async function handleAccessRank(
       })
       .setTimestamp();
 
-  // ========================================
-  // BOTÕES STAFF
-  // ========================================
-
   const buttons =
     new ActionRowBuilder()
       .addComponents(
@@ -1084,10 +1093,6 @@ async function handleAccessRank(
     embeds: [embed],
     components: [buttons]
   });
-
-  // ========================================
-  // LIMPAR FORMULÁRIO
-  // ========================================
 
   pendingAccessForms.delete(
     interaction.user.id
