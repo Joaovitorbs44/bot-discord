@@ -96,10 +96,6 @@ async function createMatch(
   /*
    * Tudo é salvo em uma única
    * transação.
-   *
-   * Se qualquer INSERT falhar,
-   * nenhuma parte da partida
-   * fica salva pela metade.
    */
   const createMatchTransaction =
     db.transaction(() => {
@@ -201,9 +197,7 @@ async function createMatch(
     });
 
   /*
-   * A transação só retorna
-   * depois que a partida inteira
-   * estiver salva.
+   * Cria a partida no banco.
    */
   const createdMatch =
     createMatchTransaction();
@@ -220,8 +214,7 @@ async function createMatch(
   );
 
   /*
-   * Agora que a partida existe,
-   * removemos esses jogadores
+   * Remove os jogadores
    * da fila.
    */
   queueState.removePlayers(
@@ -229,13 +222,14 @@ async function createMatch(
   );
 
   /*
-   * Libera imediatamente a fila
-   * para uma nova partida.
+   * Libera a fila para
+   * uma nova partida.
    */
   queueState.unlockQueue();
 
   /*
-   * Atualiza o painel principal.
+   * Atualiza o painel
+   * principal da fila.
    */
   await updateQueuePanel();
 
@@ -255,9 +249,37 @@ async function createMatch(
       );
 
   /*
-   * Publica a partida criada.
+   * Busca o canal exclusivo
+   * de resultados.
    */
-  await interaction.followUp({
+  const resultsChannelId =
+    config.discord.resultsChannelId;
+
+  if (!resultsChannelId) {
+    throw new Error(
+      "RESULTS_CHANNEL_NOT_CONFIGURED"
+    );
+  }
+
+  const resultsChannel =
+    await interaction.client.channels.fetch(
+      resultsChannelId
+    );
+
+  if (
+    !resultsChannel ||
+    !resultsChannel.isTextBased()
+  ) {
+    throw new Error(
+      "INVALID_RESULTS_CHANNEL"
+    );
+  }
+
+  /*
+   * Publica a partida no
+   * canal de resultados.
+   */
+  await resultsChannel.send({
     embeds: [
       createMatchEmbed(
         createdMatch,
@@ -270,6 +292,23 @@ async function createMatch(
       buttons
     ]
   });
+
+  /*
+   * Informa no canal anterior
+   * que a partida foi criada.
+   */
+  try {
+    await interaction.followUp({
+      content:
+        `✅ Partida **${createdMatch.matchCode}** criada. ` +
+        `O resultado deverá ser informado em <#${resultsChannel.id}>.`
+    });
+  } catch (error) {
+    console.error(
+      "Erro ao avisar o canal anterior sobre a partida:",
+      error
+    );
+  }
 
   return {
     ...createdMatch,
@@ -473,16 +512,7 @@ function validateMatchData(
  *
  * A importação de queue.js
  * acontece somente aqui para
- * evitar:
- *
- * queue
- *   -> ready
- *   -> captains
- *   -> drafts
- *   -> mapVeto
- *   -> side
- *   -> match
- *   -> queue
+ * evitar dependência circular.
  */
 async function updateQueuePanel() {
   const queueMessage =
