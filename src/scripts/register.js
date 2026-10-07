@@ -130,7 +130,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("limpar-fila")
     .setDescription(
-      "Remove todos os jogadores da fila."
+      "Limpa completamente a fila do matchmaking."
     )
     .toJSON()
 ];
