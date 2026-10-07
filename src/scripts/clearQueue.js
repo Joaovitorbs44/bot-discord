@@ -90,17 +90,22 @@ async function handleClearQueueCommand(
         {
           name:
             "Jogadores na fila",
+
           value:
             String(players),
+
           inline: true
         },
+
         {
           name:
             "Estado",
+
           value:
             locked
               ? "Bloqueada"
               : "Aberta",
+
           inline: true
         }
       )
@@ -139,9 +144,11 @@ async function handleClearQueueCommand(
     embeds: [
       embed
     ],
+
     components: [
       buttons
     ],
+
     ephemeral: true
   });
 }
@@ -161,26 +168,33 @@ async function handleClearQueueConfirm(
   }
 
   /*
-   * Primeiro cancelamos o
-   * Ready Check para impedir
-   * que o timeout seja executado
-   * depois da limpeza.
+   * Confirma imediatamente
+   * a interação do botão.
+   */
+  await interaction.deferUpdate();
+
+  /*
+   * Cancela qualquer Ready Check
+   * antes de alterar a fila.
    */
   const readyCheckCancelled =
     await cancelReadyCheck();
 
+  /*
+   * Remove todos os jogadores
+   * e limpa os cooldowns.
+   */
   const removedPlayers =
     queueState.clearQueue();
 
   /*
-   * A fila sempre deve ficar
-   * aberta depois da limpeza.
+   * Garante que a fila
+   * volte a ficar aberta.
    */
   queueState.unlockQueue();
 
   /*
-   * Atualiza o painel principal
-   * para mostrar 0/10.
+   * Atualiza o painel principal.
    */
   await updateQueuePanel();
 
@@ -196,19 +210,24 @@ async function handleClearQueueConfirm(
         {
           name:
             "Jogadores removidos",
+
           value:
             String(
               removedPlayers
             ),
+
           inline: true
         },
+
         {
           name:
             "Ready Check",
+
           value:
             readyCheckCancelled
               ? "Cancelado"
               : "Não estava ativo",
+
           inline: true
         }
       )
@@ -217,17 +236,17 @@ async function handleClearQueueConfirm(
           "A fila está aberta novamente."
       });
 
-  return interaction.update({
+  return interaction.editReply({
     embeds: [
       embed
     ],
+
     components: []
   });
 }
 
 /*
- * Cancela a operação sem
- * alterar a fila.
+ * Cancela a operação.
  */
 async function handleClearQueueCancel(
   interaction
@@ -253,6 +272,7 @@ async function handleClearQueueCancel(
     embeds: [
       embed
     ],
+
     components: []
   });
 }
