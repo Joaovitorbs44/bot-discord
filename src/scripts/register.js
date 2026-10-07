@@ -125,6 +125,13 @@ const commands = [
           )
           .setRequired(true)
     )
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("limpar-fila")
+    .setDescription(
+      "Remove todos os jogadores da fila."
+    )
     .toJSON()
 ];
 
