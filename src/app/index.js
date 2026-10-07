@@ -58,6 +58,12 @@ const {
 );
 
 const {
+  handleRemoveQueueCommand
+} = require(
+  "../scripts/removeQueue"
+);
+
+const {
   handleHistory,
   handleMatchLookup
 } = require(
@@ -619,6 +625,20 @@ client.on(
       }
 
       // ======================================
+      // /remover-fila
+      // ======================================
+
+      if (
+        interaction.isChatInputCommand() &&
+        interaction.commandName ===
+          "remover-fila"
+      ) {
+        return handleRemoveQueueCommand(
+          interaction
+        );
+      }
+
+      // ======================================
       // /limpar-fila
       // ======================================
 
@@ -866,7 +886,7 @@ async function handleAccessRank(
   if (existingRequest) {
     if (
       existingRequest.status ===
-      "pending"
+        "pending"
     ) {
       pendingAccessForms.delete(
         interaction.user.id
@@ -882,7 +902,7 @@ async function handleAccessRank(
 
     if (
       existingRequest.status ===
-      "approved"
+        "approved"
     ) {
       pendingAccessForms.delete(
         interaction.user.id
