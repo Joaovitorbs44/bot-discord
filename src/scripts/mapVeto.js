@@ -44,6 +44,8 @@ let currentCaptain = "A";
 
 let selectedMap = null;
 
+let vetoMessage = null;
+
 /*
  * Inicia o veto.
  */
@@ -176,9 +178,40 @@ async function startMapVeto(
   vetoActive = true;
 
   try {
-    await interaction.followUp(
-      createMapVetoPanel()
-    );
+    /*
+     * Busca o canal exclusivo
+     * para veto de mapas.
+     */
+    const channel =
+      await interaction.client.channels.fetch(
+        config.discord.mapVetoChannelId
+      );
+
+    if (
+      !channel ||
+      !channel.isTextBased()
+    ) {
+      throw new Error(
+        "INVALID_MAP_VETO_CHANNEL"
+      );
+    }
+
+    /*
+     * Envia o painel no canal
+     * correto.
+     */
+    vetoMessage =
+      await channel.send(
+        createMapVetoPanel()
+      );
+
+    /*
+     * Avisa no canal do draft.
+     */
+    await interaction.followUp({
+      content:
+        `🗺️ O veto de mapas foi iniciado em <#${channel.id}>.`
+    });
   } catch (error) {
     resetMapVeto();
 
@@ -519,6 +552,11 @@ async function finishMapVeto(
     components: []
   });
 
+  /*
+   * Como esta interaction agora veio
+   * do #map-veto, a escolha de lado
+   * também continuará no #map-veto.
+   */
   await startSideChoice(
     interaction,
     {
@@ -560,6 +598,8 @@ function resetMapVeto() {
   currentCaptain = "A";
 
   selectedMap = null;
+
+  vetoMessage = null;
 }
 
 function isMapVetoActive() {
