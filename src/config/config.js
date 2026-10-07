@@ -12,6 +12,7 @@ const requiredVariables = [
   "RANKING_CHANNEL_ID",
   "MAP_VETO_CHANNEL_ID",
   "DRAFT_CHANNEL_ID",
+  "RESULTS_CHANNEL_ID",
   "LOG_CHANNEL_ID"
 ];
 
@@ -57,6 +58,9 @@ module.exports = {
 
     draftChannelId:
       process.env.DRAFT_CHANNEL_ID,
+
+    resultsChannelId:
+      process.env.RESULTS_CHANNEL_ID,
 
     logChannelId:
       process.env.LOG_CHANNEL_ID
