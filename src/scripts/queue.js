@@ -76,8 +76,7 @@ async function handleQueue(
 
   /*
    * Durante a formação
-   * da partida ninguém
-   * pode entrar ou sair.
+   * ninguém pode entrar/sair.
    */
   if (
     queueState.isQueueLocked()
@@ -159,8 +158,8 @@ async function joinQueue(
   }
 
   /*
-   * Verifica se o jogador
-   * já está em uma partida.
+   * Verifica se já participa
+   * de uma partida ativa.
    */
   const activeMatch =
     db.prepare(`
@@ -195,10 +194,6 @@ async function joinQueue(
     });
   }
 
-  /*
-   * Impede ultrapassar
-   * o limite.
-   */
   if (
     queueState.getSize() >=
     requiredPlayers
@@ -230,16 +225,13 @@ async function joinQueue(
     });
   }
 
-  /*
-   * Inicia cooldown.
-   */
   queueState.setCooldown(
     interaction.user.id
   );
 
   /*
-   * Guarda a mensagem
-   * principal da fila.
+   * Sempre salva a mensagem
+   * correta da fila.
    */
   queueState.setQueueMessage(
     interaction.message
@@ -255,9 +247,6 @@ async function joinQueue(
     ephemeral: true
   });
 
-  /*
-   * Log.
-   */
   await logQueueJoin(
     interaction,
     player,
@@ -266,7 +255,7 @@ async function joinQueue(
   );
 
   /*
-   * Fila completa.
+   * 10 jogadores encontrados.
    */
   if (
     queueState.getSize() ===
@@ -280,14 +269,12 @@ async function joinQueue(
       queueState.getPlayers();
 
     try {
-      /*
-       * Alerta público.
-       */
       await interaction.followUp({
         content:
           createMatchFoundMessage(
             players
           ),
+
         allowedMentions: {
           users:
             players.map(
@@ -297,9 +284,6 @@ async function joinQueue(
         }
       });
 
-      /*
-       * Inicia Ready Check.
-       */
       await startReadyCheck(
         interaction,
         players
@@ -321,8 +305,7 @@ async function joinQueue(
           ephemeral: true
         });
       } catch {
-        // A interação pode
-        // já ter expirado.
+        // Interação expirada.
       }
     }
   }
@@ -380,8 +363,8 @@ async function leaveQueue(
 }
 
 /*
- * Mensagem enviada quando
- * encontramos os 10 jogadores.
+ * Mensagem quando os
+ * 10 jogadores são encontrados.
  */
 function createMatchFoundMessage(
   players
@@ -403,31 +386,313 @@ function createMatchFoundMessage(
 }
 
 /*
- * Atualiza o painel
- * principal da fila.
+ * Atualiza o painel atual.
  */
 async function updateQueuePanel() {
   const queueMessage =
     queueState.getQueueMessage();
 
   if (!queueMessage) {
-    return;
+    return false;
   }
 
   try {
     await queueMessage.edit(
       createQueuePanel()
     );
+
+    return true;
   } catch (error) {
     console.error(
       "Erro ao atualizar painel da fila:",
       error
     );
+
+    return false;
   }
 }
 
 /*
- * Cria o painel da fila.
+ * Restaura o painel depois
+ * que o bot inicia/reinicia.
+ */
+async function restoreQueuePanel(
+  client
+) {
+  try {
+    const channel =
+      await client.channels.fetch(
+        config.discord.queueChannelId
+      );
+
+    if (
+      !channel ||
+      !channel.isTextBased() ||
+      !channel.messages
+    ) {
+      throw new Error(
+        "QUEUE_CHANNEL_INVALID"
+      );
+    }
+
+    /*
+     * Como a fila atual é mantida
+     * em memória, depois de restart
+     * começamos novamente com ela
+     * vazia e desbloqueada.
+     */
+    queueState.clearQueue();
+    queueState.unlockQueue();
+
+    /*
+     * Procura as mensagens recentes
+     * do canal.
+     */
+    const messages =
+      await channel.messages.fetch({
+        limit: 100
+      });
+
+    /*
+     * Procura mensagens do próprio
+     * bot que tenham os componentes
+     * queue_join / queue_leave.
+     */
+    const queueMessages =
+      messages
+        .filter(
+          (message) =>
+            message.author &&
+            message.author.id ===
+              client.user.id &&
+            isQueuePanelMessage(
+              message
+            )
+        )
+        .sort(
+          (a, b) =>
+            b.createdTimestamp -
+            a.createdTimestamp
+        );
+
+    /*
+     * Usa o painel mais recente.
+     */
+    let queueMessage =
+      queueMessages.first();
+
+    /*
+     * Caso não exista painel,
+     * cria automaticamente.
+     */
+    if (!queueMessage) {
+      queueMessage =
+        await channel.send(
+          createQueuePanel()
+        );
+
+      queueState.setQueueMessage(
+        queueMessage
+      );
+
+      console.log(
+        "Novo painel de matchmaking criado."
+      );
+
+      return queueMessage;
+    }
+
+    /*
+     * Registra a mensagem novamente
+     * no estado em memória.
+     */
+    queueState.setQueueMessage(
+      queueMessage
+    );
+
+    /*
+     * Atualiza imediatamente.
+     *
+     * Isso transforma, por exemplo:
+     *
+     * 10/10 + bloqueada
+     *
+     * em:
+     *
+     * 0/10 + aberta
+     */
+    await queueMessage.edit(
+      createQueuePanel()
+    );
+
+    /*
+     * Se houver painéis duplicados
+     * antigos, desativa os botões
+     * deles para ninguém usar
+     * uma interface antiga.
+     */
+    const duplicateMessages =
+      queueMessages.filter(
+        (message) =>
+          message.id !==
+          queueMessage.id
+      );
+
+    for (
+      const duplicate
+      of duplicateMessages.values()
+    ) {
+      try {
+        await disableOldQueuePanel(
+          duplicate
+        );
+      } catch (error) {
+        console.error(
+          `Erro ao desativar painel antigo ${duplicate.id}:`,
+          error
+        );
+      }
+    }
+
+    console.log(
+      `Painel de matchmaking restaurado: ${queueMessage.id}`
+    );
+
+    return queueMessage;
+  } catch (error) {
+    console.error(
+      "Erro ao restaurar painel de matchmaking:",
+      error
+    );
+
+    return null;
+  }
+}
+
+/*
+ * Verifica se uma mensagem
+ * é realmente um painel
+ * de matchmaking.
+ */
+function isQueuePanelMessage(
+  message
+) {
+  if (
+    !message ||
+    !Array.isArray(
+      message.components
+    )
+  ) {
+    return false;
+  }
+
+  let hasJoin = false;
+  let hasLeave = false;
+
+  for (
+    const row
+    of message.components
+  ) {
+    if (
+      !row ||
+      !Array.isArray(
+        row.components
+      )
+    ) {
+      continue;
+    }
+
+    for (
+      const component
+      of row.components
+    ) {
+      if (
+        component.customId ===
+        "queue_join"
+      ) {
+        hasJoin = true;
+      }
+
+      if (
+        component.customId ===
+        "queue_leave"
+      ) {
+        hasLeave = true;
+      }
+    }
+  }
+
+  return (
+    hasJoin &&
+    hasLeave
+  );
+}
+
+/*
+ * Desativa painel duplicado
+ * ou antigo.
+ */
+async function disableOldQueuePanel(
+  message
+) {
+  const embed =
+    new EmbedBuilder()
+      .setTitle(
+        "Painel de matchmaking antigo"
+      )
+      .setDescription(
+        "Este painel foi substituído. Utilize o painel de matchmaking mais recente."
+      )
+      .setFooter({
+        text:
+          "Rainbow Six Siege • Matchmaking"
+      });
+
+  const buttons =
+    new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId(
+            "queue_old_join"
+          )
+          .setLabel(
+            "Entrar na fila"
+          )
+          .setStyle(
+            ButtonStyle.Success
+          )
+          .setDisabled(
+            true
+          ),
+
+        new ButtonBuilder()
+          .setCustomId(
+            "queue_old_leave"
+          )
+          .setLabel(
+            "Sair da fila"
+          )
+          .setStyle(
+            ButtonStyle.Secondary
+          )
+          .setDisabled(
+            true
+          )
+      );
+
+  await message.edit({
+    embeds: [
+      embed
+    ],
+
+    components: [
+      buttons
+    ]
+  });
+}
+
+/*
+ * Cria o painel.
  */
 function createQueuePanel() {
   const players =
@@ -554,8 +819,7 @@ function createQueuePanel() {
 }
 
 /*
- * Compatibilidade com
- * outros arquivos.
+ * Compatibilidade.
  */
 function getQueue() {
   return queueState.getPlayers();
@@ -576,7 +840,7 @@ function setQueueMessage(
 function removePlayer(
   discordId
 ) {
-  queueState.removePlayer(
+  return queueState.removePlayer(
     discordId
   );
 }
@@ -584,7 +848,7 @@ function removePlayer(
 function removePlayersFromQueue(
   discordIds
 ) {
-  queueState.removePlayers(
+  return queueState.removePlayers(
     discordIds
   );
 }
@@ -599,6 +863,7 @@ module.exports = {
 
   setQueueMessage,
   updateQueuePanel,
+  restoreQueuePanel,
 
   removePlayer,
   removePlayersFromQueue,
