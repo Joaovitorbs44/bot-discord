@@ -19,29 +19,18 @@ const queueState = require(
   "./queueState"
 );
 
-let sideChoiceActive =
-  false;
+let sideChoiceActive = false;
 
-let captainA =
-  null;
+let captainA = null;
+let captainB = null;
 
-let captainB =
-  null;
+let teamA = [];
+let teamB = [];
 
-let teamA =
-  [];
+let selectedMap = null;
 
-let teamB =
-  [];
-
-let selectedMap =
-  null;
-
-let sideA =
-  null;
-
-let sideB =
-  null;
+let sideA = null;
+let sideB = null;
 
 /*
  * Inicia a escolha de lado.
@@ -50,20 +39,12 @@ async function startSideChoice(
   interaction,
   matchData
 ) {
-  /*
-   * Não permite duas escolhas
-   * simultâneas.
-   */
   if (sideChoiceActive) {
     throw new Error(
       "SIDE_CHOICE_ALREADY_ACTIVE"
     );
   }
 
-  /*
-   * Valida os dados recebidos
-   * do veto de mapas.
-   */
   if (
     !matchData ||
     !matchData.map ||
@@ -81,9 +62,6 @@ async function startSideChoice(
     );
   }
 
-  /*
-   * Valida os capitães.
-   */
   if (
     !matchData.captainA.discordId ||
     !matchData.captainB.discordId
@@ -102,10 +80,6 @@ async function startSideChoice(
     );
   }
 
-  /*
-   * Precisamos ter exatamente
-   * 5 jogadores em cada time.
-   */
   if (
     matchData.teamA.length !==
       config.matchmaking.teamSize ||
@@ -117,10 +91,6 @@ async function startSideChoice(
     );
   }
 
-  /*
-   * Verifica se não existe
-   * jogador duplicado.
-   */
   const allPlayers = [
     ...matchData.teamA,
     ...matchData.teamB
@@ -143,10 +113,6 @@ async function startSideChoice(
     );
   }
 
-  /*
-   * Capitão A precisa estar
-   * no Time A.
-   */
   const captainAInTeam =
     matchData.teamA.some(
       (player) =>
@@ -154,10 +120,6 @@ async function startSideChoice(
         matchData.captainA.discordId
     );
 
-  /*
-   * Capitão B precisa estar
-   * no Time B.
-   */
   const captainBInTeam =
     matchData.teamB.some(
       (player) =>
@@ -191,20 +153,11 @@ async function startSideChoice(
   selectedMap =
     matchData.map;
 
-  sideA =
-    null;
+  sideA = null;
+  sideB = null;
 
-  sideB =
-    null;
+  sideChoiceActive = true;
 
-  sideChoiceActive =
-    true;
-
-  /*
-   * A fila deve continuar
-   * bloqueada até a partida
-   * ser criada.
-   */
   queueState.lockQueue();
 
   try {
@@ -212,16 +165,14 @@ async function startSideChoice(
       createSideChoicePanel()
     );
   } catch (error) {
-    sideChoiceActive =
-      false;
+    resetSideChoice();
 
     throw error;
   }
 }
 
 /*
- * Cria o painel de
- * escolha de lado.
+ * Painel de escolha.
  */
 function createSideChoicePanel() {
   if (
@@ -307,7 +258,7 @@ function createSideChoicePanel() {
 }
 
 /*
- * Processa a escolha.
+ * Processa escolha.
  */
 async function handleSideChoice(
   interaction
@@ -321,10 +272,6 @@ async function handleSideChoice(
     });
   }
 
-  /*
-   * Somente o Capitão A
-   * pode escolher.
-   */
   if (
     interaction.user.id !==
     captainA.discordId
@@ -337,38 +284,19 @@ async function handleSideChoice(
     });
   }
 
-  /*
-   * Ataque.
-   */
   if (
     interaction.customId ===
     "side_attack"
   ) {
-    sideA =
-      "Ataque";
-
-    sideB =
-      "Defesa";
-  }
-
-  /*
-   * Defesa.
-   */
-  else if (
+    sideA = "Ataque";
+    sideB = "Defesa";
+  } else if (
     interaction.customId ===
     "side_defense"
   ) {
-    sideA =
-      "Defesa";
-
-    sideB =
-      "Ataque";
-  }
-
-  /*
-   * Custom ID desconhecido.
-   */
-  else {
+    sideA = "Defesa";
+    sideB = "Ataque";
+  } else {
     return interaction.reply({
       content:
         "Escolha de lado inválida.",
@@ -383,8 +311,7 @@ async function handleSideChoice(
 }
 
 /*
- * Finaliza a configuração
- * e cria a partida.
+ * Finaliza e cria partida.
  */
 async function finishSideChoice(
   interaction
@@ -402,12 +329,7 @@ async function finishSideChoice(
     );
   }
 
-  /*
-   * Bloqueia imediatamente
-   * novos cliques.
-   */
-  sideChoiceActive =
-    false;
+  sideChoiceActive = false;
 
   const matchData = {
     map:
@@ -440,9 +362,6 @@ async function finishSideChoice(
       captainB
     );
 
-  /*
-   * Fecha o painel.
-   */
   await interaction.update({
     embeds: [
       new EmbedBuilder()
@@ -482,49 +401,26 @@ async function finishSideChoice(
     components: []
   });
 
-  /*
-   * Cria a partida no banco.
-   *
-   * match.js será responsável por:
-   *
-   * - salvar a partida;
-   * - salvar os 10 jogadores;
-   * - remover os jogadores da fila;
-   * - liberar a fila;
-   * - atualizar o painel.
-   */
   try {
     await createMatch(
       interaction,
       matchData
     );
 
-    /*
-     * Só limpamos o estado
-     * depois que a partida
-     * realmente foi criada.
-     */
     resetSideChoice();
   } catch (error) {
     /*
-     * Se a criação falhar,
-     * mantemos a fila bloqueada.
-     *
-     * Isso evita que os mesmos
-     * 10 jogadores entrem em
-     * outra partida enquanto
-     * existe um erro.
+     * Conserva os dados da
+     * formação para permitir
+     * que /limpar-fila consiga
+     * recuperar e resetar tudo.
      */
-    sideChoiceActive =
-      false;
+    sideChoiceActive = false;
 
     throw error;
   }
 }
 
-/*
- * Cria a lista de um time.
- */
 function createTeamList(
   players,
   captain
@@ -554,32 +450,21 @@ function createTeamList(
 }
 
 /*
- * Limpa o estado.
+ * Reset completo.
  */
 function resetSideChoice() {
-  sideChoiceActive =
-    false;
+  sideChoiceActive = false;
 
-  captainA =
-    null;
+  captainA = null;
+  captainB = null;
 
-  captainB =
-    null;
+  teamA = [];
+  teamB = [];
 
-  teamA =
-    [];
+  selectedMap = null;
 
-  teamB =
-    [];
-
-  selectedMap =
-    null;
-
-  sideA =
-    null;
-
-  sideB =
-    null;
+  sideA = null;
+  sideB = null;
 }
 
 function isSideChoiceActive() {
@@ -611,6 +496,7 @@ module.exports = {
   startSideChoice,
   handleSideChoice,
 
+  resetSideChoice,
   isSideChoiceActive,
   getMatchSetup
 };
