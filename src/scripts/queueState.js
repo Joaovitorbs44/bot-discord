@@ -62,25 +62,45 @@ function removePlayers(
       discordIds
     )
   ) {
-    return;
+    return 0;
   }
+
+  let removed =
+    0;
 
   for (
     const discordId
     of discordIds
   ) {
-    queue.delete(
-      discordId
-    );
+    const deleted =
+      queue.delete(
+        discordId
+      );
+
+    if (deleted) {
+      removed++;
+    }
   }
+
+  return removed;
 }
 
 /*
  * Limpa completamente
  * a fila.
+ *
+ * Retorna quantos jogadores
+ * foram removidos.
  */
 function clearQueue() {
+  const removedPlayers =
+    queue.size;
+
   queue.clear();
+
+  cooldowns.clear();
+
+  return removedPlayers;
 }
 
 /*
