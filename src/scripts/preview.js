@@ -25,19 +25,23 @@ const {
 const PRIMARY = 0xFF3D2C;
 const IMAGE_NAME = "map-veto-preview.png";
 const PLAYERS = Array.from(
-{ length: 10 },
-(_, index) => ({
-id: player$DIL0,
-nickname:
-player$DIL1,
-rank: [
-"Diamante",
-"Esmeralda",
-"Platina",
-"Ouro",
-"Prata"
-][index % 5]
-})
+  { length: 10 },
+  (_, index) => {
+    const nickname =
+      `player${String(index + 1).padStart(2, "0")}`;
+
+    return {
+      id: nickname,
+      nickname,
+      rank: [
+        "Diamante",
+        "Esmeralda",
+        "Platina",
+        "Ouro",
+        "Prata"
+      ][index % 5]
+    };
+  }
 );
 const TEAM_A = [
   PLAYERS[0],
