@@ -6,192 +6,110 @@ const {
 } = require("discord.js");
 
 const db = require("../database/database");
-const config = require("../config/config");
 const queueState = require("./queueState");
+const { startDraft } = require("./drafts");
 
-const {
-  startDraft
-} = require("./drafts");
-
-// ==========================================
-// ESTADO
-// ==========================================
-
-let captainVoteActive = false;
-let captainVoteFinishing = false;
-let captainPlayers = [];
-
-const votes = new Map();
+let voteActive = false;
+let voteFinishing = false;
 
 let captainA = null;
 let captainB = null;
-let captainVoteMessage = null;
-let captainVoteSessionId = null;
 
-// ==========================================
-// PERSISTÊNCIA
-// ==========================================
+let captainPlayers = [];
+let votes = new Map();
+
+let voteMessage = null;
+let voteClient = null;
+let voteSessionId = null;
 
 function getSession() {
   return queueState.getActiveSession();
 }
 
-function saveCaptainVoteState() {
-  const session = getSession();
-
-  if (!session || session.stage !== "captain_vote") {
-    return;
-  }
-
-  const state = {
-    captainVote: {
-      votes: Object.fromEntries(votes),
-      messageId: captainVoteMessage?.id || null,
-      channelId:
-        captainVoteMessage?.channelId ||
-        config.discord.queueChannelId
-    }
-  };
-
-  db.prepare(`
-    UPDATE matchmaking_sessions
-    SET
-      state_json = ?,
-      updated_at = ?
-    WHERE id = ?
-  `).run(
-    JSON.stringify(state),
-    Date.now(),
-    session.id
-  );
-}
-
-// ==========================================
-// INICIAR VOTAÇÃO
-// ==========================================
-
-async function startCaptainVote(interaction, players) {
-  if (captainVoteActive) {
-    throw new Error(
-      "CAPTAIN_VOTE_ALREADY_ACTIVE"
-    );
-  }
-
-  if (
-    !Array.isArray(players) ||
-    players.length !==
-      config.matchmaking.requiredPlayers
-  ) {
-    throw new Error(
-      "INVALID_CAPTAIN_VOTE_PLAYERS"
-    );
-  }
-
-  const uniquePlayers = new Set(
-    players.map((player) => player?.discordId)
-  );
-
-  if (
-    uniquePlayers.size !== players.length ||
-    uniquePlayers.has(undefined)
-  ) {
-    throw new Error(
-      "DUPLICATED_CAPTAIN_VOTE_PLAYERS"
-    );
-  }
-
-  const invalidPlayer = players.some(
-    (player) =>
-      !player ||
-      !player.discordId ||
-      !player.nickname ||
-      !player.rank
-  );
-
-  if (invalidPlayer) {
-    throw new Error(
-      "INVALID_CAPTAIN_VOTE_PLAYER_DATA"
-    );
-  }
-
-  const session = getSession();
-
-  if (!session) {
-    throw new Error(
-      "CAPTAIN_VOTE_SESSION_NOT_FOUND"
-    );
-  }
-
-  captainPlayers = [...players];
-  votes.clear();
+function resetCaptainVote() {
+  voteActive = false;
+  voteFinishing = false;
 
   captainA = null;
   captainB = null;
-  captainVoteMessage = null;
-  captainVoteSessionId = session.id;
 
-  captainVoteActive = true;
-  captainVoteFinishing = false;
+  captainPlayers = [];
+  votes = new Map();
 
-  try {
-    db.prepare(`
-      UPDATE matchmaking_sessions
-      SET
-        stage = 'captain_vote',
-        deadline_at = NULL,
-        state_json = '{}',
-        updated_at = ?
-      WHERE id = ?
-    `).run(
-      Date.now(),
-      session.id
-    );
-
-    captainVoteMessage = await interaction.followUp({
-      ...createCaptainVotePanel(),
-      fetchReply: true
-    });
-
-    saveCaptainVoteState();
-  } catch (error) {
-    resetCaptainVote();
-    throw error;
-  }
+  voteMessage = null;
+  voteClient = null;
+  voteSessionId = null;
 }
 
-// ==========================================
-// PAINEL DE VOTAÇÃO
-// ==========================================
+function isCaptainVoteActive() {
+  return voteActive;
+}
 
-function createCaptainVotePanel() {
+function getCaptainA() {
+  return captainA;
+}
+
+function getCaptainB() {
+  return captainB;
+}
+
+function getCaptains() {
+  return { captainA, captainB };
+}
+
+function getCaptainPlayers() {
+  return [...captainPlayers];
+}
+
+function createVotePanel(finished = false) {
+  const playerList = captainPlayers.map((player, index) =>
+    `**${index + 1}.** ${player.nickname} — ${player.rank}`
+  ).join("\n");
+
   const embed = new EmbedBuilder()
-    .setTitle("Escolha dos capitães")
+    .setTitle("Votação de capitães")
     .setDescription(
-      "Os 10 jogadores devem votar em quem desejam como capitão.\n\n" +
-      "Cada jogador possui **1 voto**.\n" +
-      "Os **2 jogadores mais votados** serão os capitães."
+      finished
+        ? `Votação encerrada!\n\n` +
+          `👑 **Time A:** <@${captainA.discordId}>\n` +
+          `👑 **Time B:** <@${captainB.discordId}>`
+        : "Cada jogador deve votar em um participante para capitão."
     )
-    .addFields({
-      name: "Votos registrados",
-      value: `${votes.size}/${captainPlayers.length}`,
-      inline: true
-    })
+    .addFields(
+      {
+        name: "Jogadores",
+        value: playerList || "Nenhum.",
+        inline: false
+      },
+      {
+        name: "Votos registrados",
+        value: `${votes.size}/${captainPlayers.length}`,
+        inline: true
+      }
+    )
     .setFooter({
-      text: "Rainbow Six Siege • Escolha dos capitães"
+      text: finished
+        ? "Draft de jogadores iniciado"
+        : "Rainbow Six Siege • Matchmaking"
     });
+
+  if (finished) {
+    return {
+      embeds: [embed],
+      components: []
+    };
+  }
 
   const select = new StringSelectMenuBuilder()
     .setCustomId("captain_vote")
-    .setPlaceholder("Escolha seu capitão")
+    .setPlaceholder("Vote em um capitão")
     .setMinValues(1)
     .setMaxValues(1)
     .addOptions(
-      captainPlayers.map((player) => ({
-        label: limitText(player.nickname, 100),
-        description: limitText(
-          `Rank: ${player.rank}`,
-          100
-        ),
+      captainPlayers.map(player => ({
+        label: String(player.nickname).slice(0, 100),
+        description:
+          `Rank: ${player.rank}`.slice(0, 100),
         value: player.discordId
       }))
     );
@@ -204,168 +122,190 @@ function createCaptainVotePanel() {
   };
 }
 
-// ==========================================
-// REGISTRAR VOTO
-// ==========================================
-
-async function handleCaptainVote(interaction) {
-  if (!captainVoteActive || captainVoteFinishing) {
-    return interaction.reply({
-      content:
-        "Não existe uma votação de capitães ativa.",
-      ephemeral: true
-    });
-  }
-
-  const playerIsInMatch = captainPlayers.some(
-    (player) =>
-      player.discordId === interaction.user.id
-  );
-
-  if (!playerIsInMatch) {
-    return interaction.reply({
-      content:
-        "Você não participa desta partida.",
-      ephemeral: true
-    });
-  }
-
-  if (votes.has(interaction.user.id)) {
-    return interaction.reply({
-      content:
-        "Você já votou para capitão.",
-      ephemeral: true
-    });
-  }
-
-  const selectedPlayerId = interaction.values[0];
-
-  if (selectedPlayerId === interaction.user.id) {
-    return interaction.reply({
-      content:
-        "Você não pode votar em si mesmo para capitão.",
-      ephemeral: true
-    });
-  }
-
-  const selectedPlayer = captainPlayers.find(
-    (player) =>
-      player.discordId === selectedPlayerId
-  );
-
-  if (!selectedPlayer) {
-    return interaction.reply({
-      content:
-        "O jogador selecionado não participa desta partida.",
-      ephemeral: true
-    });
-  }
-
+function saveVoteState() {
   const session = getSession();
 
   if (
     !session ||
-    session.id !== captainVoteSessionId ||
+    session.id !== voteSessionId ||
     session.stage !== "captain_vote"
-  ) {
-    return interaction.reply({
-      content:
-        "Esta votação não está mais ativa.",
-      ephemeral: true
-    });
-  }
-
-  votes.set(
-    interaction.user.id,
-    selectedPlayerId
-  );
-
-  saveCaptainVoteState();
-
-  await interaction.update(
-    createCaptainVotePanel()
-  );
-
-  await interaction.followUp({
-    content:
-      `Seu voto em **${selectedPlayer.nickname}** foi registrado.`,
-    ephemeral: true
-  });
-
-  if (votes.size === captainPlayers.length) {
-    await finishCaptainVote(interaction);
-  }
-}
-
-// ==========================================
-// CONTAGEM DE VOTOS
-// ==========================================
-
-function countVotes() {
-  const result = new Map();
-
-  for (const player of captainPlayers) {
-    result.set(player.discordId, 0);
-  }
-
-  for (const selectedPlayerId of votes.values()) {
-    result.set(
-      selectedPlayerId,
-      (result.get(selectedPlayerId) || 0) + 1
-    );
-  }
-
-  return result;
-}
-
-// ==========================================
-// FINALIZAR VOTAÇÃO
-// ==========================================
-
-async function finishCaptainVote(interaction) {
-  if (
-    !captainVoteActive ||
-    captainVoteFinishing ||
-    votes.size !== captainPlayers.length
   ) {
     return;
   }
 
-  captainVoteFinishing = true;
-
-  const voteCount = countVotes();
-
-  const ranking = captainPlayers.map(
-    (player) => ({
-      ...player,
-      votes: voteCount.get(player.discordId) || 0
-    })
+  db.prepare(`
+    UPDATE matchmaking_sessions
+    SET state_json = ?,
+        updated_at = ?
+    WHERE id = ? AND stage = 'captain_vote'
+  `).run(
+    JSON.stringify({
+      captainVote: {
+        votes: Object.fromEntries(votes),
+        messageId: voteMessage?.id || null,
+        channelId: voteMessage?.channelId || null
+      }
+    }),
+    Date.now(),
+    voteSessionId
   );
+}
 
-  shuffleArray(ranking);
-
-  ranking.sort(
-    (a, b) => b.votes - a.votes
-  );
-
-  captainA = ranking[0];
-  captainB = ranking[1];
+async function startCaptainVote(interaction, players) {
+  if (voteActive) {
+    throw new Error("CAPTAIN_VOTE_ALREADY_ACTIVE");
+  }
 
   if (
-    !captainA ||
-    !captainB ||
-    captainA.discordId === captainB.discordId
+    !Array.isArray(players) ||
+    players.length !== 10 ||
+    new Set(players.map(p => p.discordId)).size !== 10
   ) {
-    captainVoteFinishing = false;
-    throw new Error("INVALID_CAPTAIN_VOTE_RESULT");
+    throw new Error("INVALID_CAPTAIN_VOTE_PLAYERS");
   }
 
   const session = getSession();
 
-  if (!session || session.id !== captainVoteSessionId) {
-    captainVoteFinishing = false;
+  if (!session) {
+    throw new Error("CAPTAIN_VOTE_SESSION_NOT_FOUND");
+  }
+
+  captainPlayers = [...players];
+  votes = new Map();
+
+  voteSessionId = session.id;
+  voteClient = interaction.client;
+
+  captainA = null;
+  captainB = null;
+
+  voteActive = true;
+  voteFinishing = false;
+
+  db.prepare(`
+    UPDATE matchmaking_sessions
+    SET stage = 'captain_vote',
+        deadline_at = NULL,
+        state_json = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    JSON.stringify({
+      captainVote: {
+        votes: {},
+        messageId: null,
+        channelId: null
+      }
+    }),
+    Date.now(),
+    voteSessionId
+  );
+
+  try {
+    voteMessage = await interaction.followUp({
+      ...createVotePanel(),
+      fetchReply: true
+    });
+
+    saveVoteState();
+  } catch (error) {
+    resetCaptainVote();
+    throw error;
+  }
+}
+
+async function handleCaptainVote(interaction) {
+  const session = getSession();
+
+  if (
+    !voteActive ||
+    voteFinishing ||
+    !session ||
+    session.id !== voteSessionId ||
+    session.stage !== "captain_vote"
+  ) {
+    return interaction.reply({
+      content: "Não existe uma votação de capitães ativa.",
+      ephemeral: true
+    });
+  }
+
+  const voterId = interaction.user.id;
+  const selectedId = interaction.values[0];
+
+  if (!captainPlayers.some(p => p.discordId === voterId)) {
+    return interaction.reply({
+      content: "Você não participa desta votação.",
+      ephemeral: true
+    });
+  }
+
+  if (votes.has(voterId)) {
+    return interaction.reply({
+      content: "Você já registrou seu voto.",
+      ephemeral: true
+    });
+  }
+
+  if (!captainPlayers.some(p => p.discordId === selectedId)) {
+    return interaction.reply({
+      content: "Jogador selecionado inválido.",
+      ephemeral: true
+    });
+  }
+
+  votes.set(voterId, selectedId);
+  saveVoteState();
+
+  await interaction.deferUpdate();
+
+  if (votes.size === captainPlayers.length) {
+    await finishCaptainVote(interaction);
+  } else if (voteMessage) {
+    await voteMessage.edit(createVotePanel());
+  }
+}
+
+function selectCaptains() {
+  const counts = new Map(
+    captainPlayers.map(player => [player.discordId, 0])
+  );
+
+  for (const selectedId of votes.values()) {
+    counts.set(selectedId, (counts.get(selectedId) || 0) + 1);
+  }
+
+  const ranked = [...captainPlayers];
+
+  // Em caso de empate, embaralha antes de ordenar.
+  for (let i = ranked.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ranked[i], ranked[j]] = [ranked[j], ranked[i]];
+  }
+
+  ranked.sort(
+    (a, b) =>
+      counts.get(b.discordId) - counts.get(a.discordId)
+  );
+
+  return [ranked[0], ranked[1]];
+}
+
+async function finishCaptainVote(interaction = null) {
+  if (!voteActive || voteFinishing) return;
+
+  if (votes.size !== captainPlayers.length) return;
+
+  voteFinishing = true;
+
+  const session = getSession();
+
+  if (!session || session.id !== voteSessionId) {
+    voteFinishing = false;
     throw new Error("CAPTAIN_VOTE_SESSION_LOST");
   }
+
+  [captainA, captainB] = selectCaptains();
 
   db.transaction(() => {
     db.prepare(`
@@ -378,18 +318,17 @@ async function finishCaptainVote(interaction) {
     `).run(
       captainA.discordId,
       captainB.discordId,
-      session.id
+      voteSessionId
     );
 
     db.prepare(`
       UPDATE matchmaking_sessions
-      SET
-        stage = 'draft',
-        captain_a_discord_id = ?,
-        captain_b_discord_id = ?,
-        deadline_at = NULL,
-        state_json = ?,
-        updated_at = ?
+      SET stage = 'draft',
+          captain_a_discord_id = ?,
+          captain_b_discord_id = ?,
+          deadline_at = NULL,
+          state_json = ?,
+          updated_at = ?
       WHERE id = ?
     `).run(
       captainA.discordId,
@@ -399,81 +338,42 @@ async function finishCaptainVote(interaction) {
         votes: Object.fromEntries(votes)
       }),
       Date.now(),
-      session.id
+      voteSessionId
     );
   })();
 
-  captainVoteActive = false;
-
-  const resultList = ranking.map(
-    (player) =>
-      `${
-        player.discordId === captainA.discordId ||
-        player.discordId === captainB.discordId
-          ? "👑"
-          : "•"
-      } ${player.nickname} — ${player.votes} voto${
-        player.votes === 1 ? "" : "s"
-      }`
-  ).join("\n");
-
-  const embed = new EmbedBuilder()
-    .setTitle("Capitães definidos")
-    .setDescription(
-      `**Capitão A**\n` +
-      `👑 <@${captainA.discordId}> — ${captainA.nickname}\n\n` +
-      `**Capitão B**\n` +
-      `👑 <@${captainB.discordId}> — ${captainB.nickname}`
-    )
-    .addFields({
-      name: "Resultado da votação",
-      value: resultList
-    })
-    .setFooter({
-      text: "Rainbow Six Siege • Draft iniciado"
-    });
-
-  if (captainVoteMessage) {
+  if (voteMessage) {
     try {
-      await captainVoteMessage.edit({
-        embeds: [embed],
-        components: []
-      });
+      await voteMessage.edit(createVotePanel(true));
     } catch (error) {
-      console.error(
-        "Erro ao atualizar resultado da votação:",
-        error
-      );
+      console.error("Erro ao encerrar painel de votação:", error);
     }
   }
 
-  const playersForDraft = [...captainPlayers];
-  const selectedCaptainA = captainA;
-  const selectedCaptainB = captainB;
+  const context = interaction || {
+    client: voteClient,
+    followUp: async (payload) => {
+      if (!voteMessage?.channel) {
+        throw new Error("CAPTAIN_VOTE_CHANNEL_UNAVAILABLE");
+      }
+      return voteMessage.channel.send(payload);
+    }
+  };
 
   try {
     await startDraft(
-      interaction,
-      playersForDraft,
-      selectedCaptainA,
-      selectedCaptainB
+      context,
+      [...captainPlayers],
+      captainA,
+      captainB
     );
 
     resetCaptainVote();
   } catch (error) {
-    console.error(
-      "Erro ao iniciar draft:",
-      error
-    );
-
-    // Mantém a sessão bloqueada para recuperação.
+    console.error("Erro ao iniciar draft:", error);
     throw error;
   }
 }
-
-// ==========================================
-// RECUPERAÇÃO
-// ==========================================
 
 async function restoreCaptainVote(client) {
   const session = getSession();
@@ -482,15 +382,10 @@ async function restoreCaptainVote(client) {
     return false;
   }
 
-  if (captainVoteActive) {
-    return true;
-  }
+  if (voteActive) return true;
 
   const rows = db.prepare(`
-    SELECT
-      sp.discord_id,
-      p.r6_nickname,
-      p.r6_rank
+    SELECT sp.discord_id, p.r6_nickname, p.r6_rank
     FROM matchmaking_session_players sp
     LEFT JOIN players p
       ON p.discord_id = sp.discord_id
@@ -498,177 +393,89 @@ async function restoreCaptainVote(client) {
     ORDER BY sp.joined_at, sp.id
   `).all(session.id);
 
-  captainPlayers = rows.map((row) => ({
+  if (rows.length !== 10) {
+    console.error(
+      `Votação não recuperada: ${rows.length} jogadores encontrados.`
+    );
+    return false;
+  }
+
+  captainPlayers = rows.map(row => ({
     discordId: row.discord_id,
     nickname: row.r6_nickname || row.discord_id,
     rank: row.r6_rank || "Não informado"
   }));
 
-  let savedState = {};
+  let state = {};
 
   try {
-    savedState = JSON.parse(
+    state = JSON.parse(
       session.state_json || "{}"
-    );
+    ).captainVote || {};
   } catch {
-    savedState = {};
+    state = {};
   }
 
-  const savedVote = savedState.captainVote || {};
+  const validIds = new Set(
+    captainPlayers.map(p => p.discordId)
+  );
 
-  votes.clear();
+  votes = new Map(
+    Object.entries(state.votes || {}).filter(
+      ([voter, selected]) =>
+        validIds.has(voter) && validIds.has(selected)
+    )
+  );
 
-  for (
-    const [voterId, selectedId]
-    of Object.entries(savedVote.votes || {})
-  ) {
-    if (
-      captainPlayers.some(
-        (player) => player.discordId === voterId
-      ) &&
-      captainPlayers.some(
-        (player) => player.discordId === selectedId
-      )
-    ) {
-      votes.set(voterId, selectedId);
-    }
+  voteSessionId = session.id;
+  voteClient = client;
+  voteActive = true;
+  voteFinishing = false;
+
+  const channel = await client.channels.fetch(
+    state.channelId || session.channel_id
+  );
+
+  if (!channel?.send) {
+    resetCaptainVote();
+    throw new Error("CAPTAIN_VOTE_CHANNEL_NOT_FOUND");
   }
 
-  captainVoteSessionId = session.id;
-  captainVoteActive = true;
-  captainVoteFinishing = false;
-
-  const channelId =
-    savedVote.channelId ||
-    config.discord.queueChannelId;
-
-  if (savedVote.messageId) {
+  if (state.messageId && channel.messages) {
     try {
-      const channel = await client.channels.fetch(
-        channelId
+      voteMessage = await channel.messages.fetch(
+        state.messageId
       );
-
-      if (channel?.messages) {
-        captainVoteMessage =
-          await channel.messages.fetch(
-            savedVote.messageId
-          );
-      }
-    } catch (error) {
-      console.error(
-        "Não foi possível recuperar painel de capitães:",
-        error
-      );
+    } catch {
+      voteMessage = null;
     }
   }
 
-  if (!captainVoteMessage) {
-    try {
-      const channel = await client.channels.fetch(
-        config.discord.queueChannelId
-      );
-
-      captainVoteMessage = await channel.send(
-        createCaptainVotePanel()
-      );
-
-      saveCaptainVoteState();
-    } catch (error) {
-      console.error(
-        "Não foi possível recriar votação:",
-        error
-      );
-    }
+  if (!voteMessage) {
+    voteMessage = await channel.send(createVotePanel());
+    saveVoteState();
   } else {
-    await captainVoteMessage.edit(
-      createCaptainVotePanel()
-    );
+    await voteMessage.edit(createVotePanel());
+  }
+
+  if (votes.size === captainPlayers.length) {
+    await finishCaptainVote();
   }
 
   console.log(
-    `Votação de capitães recuperada: ${votes.size}/${captainPlayers.length} votos.`
+    `Votação recuperada: ${votes.size}/${captainPlayers.length} votos.`
   );
 
   return true;
 }
 
-// ==========================================
-// UTILITÁRIOS
-// ==========================================
-
-function shuffleArray(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(
-      Math.random() * (i + 1)
-    );
-
-    [array[i], array[j]] = [
-      array[j], array[i]
-    ];
-  }
-
-  return array;
-}
-
-function limitText(value, maxLength) {
-  const text = String(value || "—");
-
-  if (text.length <= maxLength) {
-    return text;
-  }
-
-  return text.slice(0, maxLength - 3) + "...";
-}
-
-function resetCaptainVote() {
-  captainVoteActive = false;
-  captainVoteFinishing = false;
-
-  captainPlayers = [];
-  votes.clear();
-
-  captainA = null;
-  captainB = null;
-
-  captainVoteMessage = null;
-  captainVoteSessionId = null;
-}
-
-function isCaptainVoteActive() {
-  return captainVoteActive;
-}
-
-function getCaptainA() {
-  return captainA;
-}
-
-function getCaptainB() {
-  return captainB;
-}
-
-function getCaptains() {
-  return {
-    captainA,
-    captainB
-  };
-}
-
-function getCaptainPlayers() {
-  return [...captainPlayers];
-}
-
-// ==========================================
-// EXPORTAÇÕES
-// ==========================================
-
 module.exports = {
   startCaptainVote,
   handleCaptainVote,
+  finishCaptainVote,
   restoreCaptainVote,
-
   resetCaptainVote,
   isCaptainVoteActive,
-
   getCaptainA,
   getCaptainB,
   getCaptains,
