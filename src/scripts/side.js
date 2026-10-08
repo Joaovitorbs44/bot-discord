@@ -1,15 +1,28 @@
 
 const {
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle
+  ButtonStyle,
+  MessageFlags
 } = require("discord.js");
 
 const db = require("../database/database");
 const config = require("../config/config");
 const { createMatch } = require("./match");
 const queueState = require("./queueState");
+
+// ==========================================
+// IDENTIDADE VISUAL
+// ==========================================
+
+const COLORS = {
+  primary: 0xFF3D2C,
+  success: 0x278451
+};
 
 // ==========================================
 // ESTADO
@@ -49,6 +62,14 @@ function parseState(raw) {
   }
 }
 
+function safeText(value) {
+  return String(value || "—")
+    .replace(/\\/g, "\\\\")
+    .replace(/([*_~`|])/g, "\\$1")
+    .replace(/@/g, "@\u200b")
+    .slice(0, 80);
+}
+
 function validateMatchData(data) {
   if (
     !data ||
@@ -71,10 +92,14 @@ function validateMatchData(data) {
   }
 
   if (
-    data.teamA.length !== config.matchmaking.teamSize ||
-    data.teamB.length !== config.matchmaking.teamSize
+    data.teamA.length !==
+      config.matchmaking.teamSize ||
+    data.teamB.length !==
+      config.matchmaking.teamSize
   ) {
-    throw new Error("INVALID_SIDE_CHOICE_TEAM_SIZE");
+    throw new Error(
+      "INVALID_SIDE_CHOICE_TEAM_SIZE"
+    );
   }
 
   const ids = [
@@ -83,10 +108,13 @@ function validateMatchData(data) {
   ].map(player => player.discordId);
 
   if (
-    ids.length !== config.matchmaking.requiredPlayers ||
+    ids.length !==
+      config.matchmaking.requiredPlayers ||
     new Set(ids).size !== ids.length
   ) {
-    throw new Error("INVALID_SIDE_CHOICE_PLAYERS");
+    throw new Error(
+      "INVALID_SIDE_CHOICE_PLAYERS"
+    );
   }
 
   if (
@@ -97,7 +125,9 @@ function validateMatchData(data) {
       p => p.discordId === data.captainB.discordId
     )
   ) {
-    throw new Error("SIDE_CHOICE_CAPTAIN_NOT_IN_TEAM");
+    throw new Error(
+      "SIDE_CHOICE_CAPTAIN_NOT_IN_TEAM"
+    );
   }
 }
 
@@ -113,6 +143,10 @@ function getMatchSetup() {
   };
 }
 
+// ==========================================
+// PERSISTÊNCIA
+// ==========================================
+
 function saveSideState() {
   const session = getSession();
 
@@ -124,7 +158,9 @@ function saveSideState() {
     return;
   }
 
-  const state = parseState(session.state_json);
+  const state = parseState(
+    session.state_json
+  );
 
   state.sideChoice = {
     map: selectedMap,
@@ -150,8 +186,14 @@ function saveSideState() {
   );
 }
 
+// ==========================================
+// LISTA DE JOGADORES
+// ==========================================
+
 function createTeamList(players, captain) {
-  if (!players?.length) return "—";
+  if (!players?.length) {
+    return "—";
+  }
 
   return players.map(player => {
     const isCaptain =
@@ -159,85 +201,160 @@ function createTeamList(players, captain) {
 
     return (
       `${isCaptain ? "👑" : "•"} ` +
-      `<@${player.discordId}> — ${player.nickname}`
+      `<@${player.discordId}> · ` +
+      `${safeText(player.nickname)}`
     );
   }).join("\n");
 }
 
 // ==========================================
-// PAINEL
+// PAINEL DE ESCOLHA
 // ==========================================
 
 function createSideChoicePanel() {
-  if (!captainA || !captainB || !selectedMap) {
-    throw new Error("INVALID_SIDE_CHOICE_STATE");
+  if (
+    !captainA ||
+    !captainB ||
+    !selectedMap
+  ) {
+    throw new Error(
+      "INVALID_SIDE_CHOICE_STATE"
+    );
   }
 
-  const embed = new EmbedBuilder()
-    .setTitle("Escolha de lado")
-    .setDescription(
-      `O mapa da partida será **${selectedMap}**.\n\n` +
-      `<@${captainA.discordId}>, escolha o lado inicial do **Time A**.`
+  const container = new ContainerBuilder()
+    .setAccentColor(COLORS.primary)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "## INVISIXTATIONAL\n" +
+        "### ESCOLHA DE LADO · 5V5"
+      )
     )
-    .addFields(
-      {
-        name: "Time A",
-        value: `👑 ${captainA.nickname}`,
-        inline: true
-      },
-      {
-        name: "Time B",
-        value: `👑 ${captainB.nickname}`,
-        inline: true
-      }
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
     )
-    .setFooter({
-      text:
-        "O Time B receberá automaticamente o lado oposto."
-    });
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**Mapa:** ${safeText(selectedMap)}\n` +
+        `**Quem escolhe:** <@${captainA.discordId}>\n\n` +
+        "O capitão do Time A define o lado inicial."
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "### 🔴 Time A\n" +
+        createTeamList(teamA, captainA)
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "### 🔵 Time B\n" +
+        createTeamList(teamB, captainB)
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# O Time B receberá automaticamente o lado oposto."
+      )
+    );
 
   const buttons = new ActionRowBuilder()
     .addComponents(
       new ButtonBuilder()
         .setCustomId("side_attack")
         .setLabel("Ataque")
+        .setEmoji("⚔️")
         .setStyle(ButtonStyle.Danger),
 
       new ButtonBuilder()
         .setCustomId("side_defense")
         .setLabel("Defesa")
+        .setEmoji("🛡️")
         .setStyle(ButtonStyle.Primary)
     );
 
   return {
-    embeds: [embed],
-    components: [buttons]
+    content: null,
+    embeds: [],
+    components: [
+      container,
+      buttons
+    ],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] }
   };
 }
 
+// ==========================================
+// PAINEL CONCLUÍDO
+// ==========================================
+
 function createCompletedPanel() {
+  const container = new ContainerBuilder()
+    .setAccentColor(COLORS.success)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "## INVISIXTATIONAL\n" +
+        "### CONFIGURAÇÃO CONCLUÍDA"
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**Mapa:** ${safeText(selectedMap)}\n` +
+        "**Status:** Criando partida..."
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### 🔴 Time A · ${safeText(sideA)}\n` +
+        createTeamList(teamA, captainA)
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### 🔵 Time B · ${safeText(sideB)}\n` +
+        createTeamList(teamB, captainB)
+      )
+    );
+
   return {
-    embeds: [
-      new EmbedBuilder()
-        .setTitle("Configuração concluída")
-        .setDescription(`**Mapa:** ${selectedMap}`)
-        .addFields(
-          {
-            name: `Time A — ${sideA}`,
-            value: createTeamList(teamA, captainA),
-            inline: true
-          },
-          {
-            name: `Time B — ${sideB}`,
-            value: createTeamList(teamB, captainB),
-            inline: true
-          }
-        )
-        .setFooter({
-          text: "Criando partida..."
-        })
-    ],
-    components: []
+    content: null,
+    embeds: [],
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] }
   };
 }
 
@@ -245,9 +362,14 @@ function createCompletedPanel() {
 // INICIAR ESCOLHA DE LADO
 // ==========================================
 
-async function startSideChoice(interaction, matchData) {
+async function startSideChoice(
+  interaction,
+  matchData
+) {
   if (sideChoiceActive) {
-    throw new Error("SIDE_CHOICE_ALREADY_ACTIVE");
+    throw new Error(
+      "SIDE_CHOICE_ALREADY_ACTIVE"
+    );
   }
 
   validateMatchData(matchData);
@@ -255,7 +377,9 @@ async function startSideChoice(interaction, matchData) {
   const session = getSession();
 
   if (!session) {
-    throw new Error("SIDE_CHOICE_SESSION_NOT_FOUND");
+    throw new Error(
+      "SIDE_CHOICE_SESSION_NOT_FOUND"
+    );
   }
 
   captainA = matchData.captainA;
@@ -303,10 +427,11 @@ async function startSideChoice(interaction, matchData) {
   queueState.lockQueue();
 
   try {
-    sideMessage = await interaction.followUp({
-      ...createSideChoicePanel(),
-      fetchReply: true
-    });
+    sideMessage =
+      await interaction.followUp({
+        ...createSideChoicePanel(),
+        fetchReply: true
+      });
 
     saveSideState();
   } catch (error) {
@@ -330,29 +455,40 @@ async function handleSideChoice(interaction) {
     session.stage !== "side_choice"
   ) {
     return interaction.reply({
-      content: "Não existe uma escolha de lado ativa.",
-      ephemeral: true
+      content:
+        "Não existe uma escolha de lado ativa.",
+      flags: MessageFlags.Ephemeral
     });
   }
 
-  if (interaction.user.id !== captainA.discordId) {
+  if (
+    interaction.user.id !==
+    captainA.discordId
+  ) {
     return interaction.reply({
       content:
-        `Somente **${captainA.nickname}** pode escolher o lado inicial.`,
-      ephemeral: true
+        `Somente **${safeText(captainA.nickname)}** pode escolher o lado inicial.`,
+      flags: MessageFlags.Ephemeral
     });
   }
 
-  if (interaction.customId === "side_attack") {
+  if (
+    interaction.customId ===
+    "side_attack"
+  ) {
     sideA = "Ataque";
     sideB = "Defesa";
-  } else if (interaction.customId === "side_defense") {
+  } else if (
+    interaction.customId ===
+    "side_defense"
+  ) {
     sideA = "Defesa";
     sideB = "Ataque";
   } else {
     return interaction.reply({
-      content: "Escolha de lado inválida.",
-      ephemeral: true
+      content:
+        "Escolha de lado inválida.",
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -365,8 +501,13 @@ async function handleSideChoice(interaction) {
 // FINALIZAR E CRIAR PARTIDA
 // ==========================================
 
-async function finishSideChoice(interaction = null) {
-  if (!sideChoiceActive || sideChoiceFinishing) {
+async function finishSideChoice(
+  interaction = null
+) {
+  if (
+    !sideChoiceActive ||
+    sideChoiceFinishing
+  ) {
     return;
   }
 
@@ -380,34 +521,52 @@ async function finishSideChoice(interaction = null) {
 
   try {
     if (interaction) {
-      await interaction.update(createCompletedPanel());
+      await interaction.update(
+        createCompletedPanel()
+      );
     } else if (sideMessage) {
-      await sideMessage.edit(createCompletedPanel());
+      await sideMessage.edit(
+        createCompletedPanel()
+      );
     }
 
     const context = interaction || {
       client: sideClient,
-      followUp: async (payload) => {
+      followUp: async payload => {
         if (!sideMessage?.channel) {
-          throw new Error("SIDE_CHOICE_CHANNEL_UNAVAILABLE");
+          throw new Error(
+            "SIDE_CHOICE_CHANNEL_UNAVAILABLE"
+          );
         }
 
-        return sideMessage.channel.send(payload);
+        return sideMessage.channel.send(
+          payload
+        );
       }
     };
 
-    await createMatch(context, matchData);
+    await createMatch(
+      context,
+      matchData
+    );
 
     const session = getSession();
 
-    if (session && session.id === sideSessionId) {
+    if (
+      session &&
+      session.id === sideSessionId
+    ) {
       db.prepare(`
         UPDATE matchmaking_sessions
         SET stage = 'playing',
             deadline_at = NULL,
             updated_at = ?
-        WHERE id = ? AND stage = 'side_choice'
-      `).run(Date.now(), sideSessionId);
+        WHERE id = ?
+          AND stage = 'side_choice'
+      `).run(
+        Date.now(),
+        sideSessionId
+      );
     }
 
     resetSideChoice();
@@ -430,19 +589,28 @@ async function finishSideChoice(interaction = null) {
 async function restoreSideChoice(client) {
   const session = getSession();
 
-  if (!session || session.stage !== "side_choice") {
+  if (
+    !session ||
+    session.stage !== "side_choice"
+  ) {
     return false;
   }
 
-  if (sideChoiceActive) return true;
+  if (sideChoiceActive) {
+    return true;
+  }
 
-  const state = parseState(session.state_json);
+  const state = parseState(
+    session.state_json
+  );
+
   const saved = state.sideChoice;
 
   if (!saved) {
     console.error(
       "Não há dados persistidos da escolha de lado."
     );
+
     return false;
   }
 
@@ -465,33 +633,41 @@ async function restoreSideChoice(client) {
   sideChoiceActive = true;
   sideChoiceFinishing = false;
 
-  const channel = await client.channels.fetch(
-    saved.channelId ||
-    config.discord.mapVetoChannelId ||
-    config.discord.queueChannelId
-  );
+  const channel =
+    await client.channels.fetch(
+      saved.channelId ||
+      config.discord.mapVetoChannelId ||
+      config.discord.queueChannelId
+    );
 
   if (!channel?.send) {
     resetSideChoice();
-    throw new Error("SIDE_CHOICE_CHANNEL_NOT_FOUND");
+    throw new Error(
+      "SIDE_CHOICE_CHANNEL_NOT_FOUND"
+    );
   }
 
-  if (saved.messageId && channel.messages) {
+  if (
+    saved.messageId &&
+    channel.messages
+  ) {
     try {
-      sideMessage = await channel.messages.fetch(
-        saved.messageId
-      );
+      sideMessage =
+        await channel.messages.fetch(
+          saved.messageId
+        );
     } catch {
       sideMessage = null;
     }
   }
 
   if (!sideMessage) {
-    sideMessage = await channel.send(
-      sideA && sideB
-        ? createCompletedPanel()
-        : createSideChoicePanel()
-    );
+    sideMessage =
+      await channel.send(
+        sideA && sideB
+          ? createCompletedPanel()
+          : createSideChoicePanel()
+      );
 
     saveSideState();
   } else {
@@ -503,11 +679,6 @@ async function restoreSideChoice(client) {
   }
 
   if (sideA && sideB) {
-    /*
-     * A escolha já foi registrada antes
-     * do reinício. Continua a criação
-     * da partida automaticamente.
-     */
     await finishSideChoice();
   }
 
