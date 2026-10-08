@@ -226,7 +226,7 @@ function createSideChoicePanel() {
     .setAccentColor(COLORS.primary)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "## INVISIXTATIONAL\n" +
+        "## INVISIX PRO\n" +
         "### ESCOLHA DE LADO · 5V5"
       )
     )
