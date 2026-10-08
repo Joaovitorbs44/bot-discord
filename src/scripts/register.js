@@ -1,4 +1,3 @@
-
 const {
   REST,
   Routes,
@@ -6,6 +5,10 @@ const {
 } = require("discord.js");
 
 const config = require("../config/config");
+
+const {
+  command: previewCommand
+} = require("./preview");
 
 const commands = [
   new SlashCommandBuilder()
@@ -113,7 +116,9 @@ const commands = [
     .setName("painel-staff")
     .setDescription(
       "Abre o painel administrativo do matchmaking."
-    )
+    ),
+
+  previewCommand
 ].map(command => command.toJSON());
 
 const rest = new REST({
