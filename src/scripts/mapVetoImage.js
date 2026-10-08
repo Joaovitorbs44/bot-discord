@@ -1,18 +1,10 @@
-
 const sharp = require("sharp");
 
-// ==========================================
-// CONFIGURACOES
-// ==========================================
-
-const CARD_WIDTH = 160;
-const CARD_HEIGHT = 100;
-
+const CARD_WIDTH = 240;
+const CARD_HEIGHT = 144;
 const GAP = 8;
 const PADDING = 12;
-
 const COLUMNS = 3;
-const ROWS = 3;
 
 const WIDTH =
   PADDING * 2 +
@@ -21,20 +13,15 @@ const WIDTH =
 
 const HEIGHT =
   PADDING * 2 +
-  ROWS * CARD_HEIGHT +
-  (ROWS - 1) * GAP;
+  COLUMNS * CARD_HEIGHT +
+  (COLUMNS - 1) * GAP;
 
 const COLORS = {
   background: "#101014",
   primary: "#FF3D2C",
   success: "#36B37E",
-  white: "#FFFFFF",
-  muted: "#A1A1AA"
+  white: "#FFFFFF"
 };
-
-// ==========================================
-// MAPAS
-// ==========================================
 
 const MAP_POOL = [
   "Bank",
@@ -47,10 +34,6 @@ const MAP_POOL = [
   "Nighthaven Labs",
   "Fortress"
 ];
-
-// ==========================================
-// IMAGENS UBISOFT
-// ==========================================
 
 const MAP_IMAGES = {
   Bank:
@@ -81,17 +64,7 @@ const MAP_IMAGES = {
     "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/4WTHlSiKQwN09UHrKTSxo8/579a9b6411b879591f9a01124a0bae99/fortress-reworked-keyart.jpg"
 };
 
-// ==========================================
-// CACHE DE IMAGENS
-// ==========================================
-
 const imageCache = new Map();
-
-const CACHE_LIMIT = 9;
-
-// ==========================================
-// UTILITARIOS
-// ==========================================
 
 function escapeXml(value) {
   return String(value)
@@ -102,279 +75,229 @@ function escapeXml(value) {
     .replace(/'/g, "&apos;");
 }
 
-function getBanInfo(map, bannedMaps) {
-  return bannedMaps.find(item => {
-    if (typeof item === "string") {
-      return item === map;
-    }
-
-    return item && item.map === map;
-  }) || null;
+function normalizeBan(item) {
+  return typeof item === "string"
+    ? { map: item }
+    : item;
 }
 
-function getBanTeam(banInfo) {
-  if (!banInfo || typeof banInfo === "string") {
-    return null;
-  }
-
-  return banInfo.captainTeam || banInfo.team || null;
-}
-
-// ==========================================
-// DOWNLOAD DE IMAGENS
-// ==========================================
-
-async function downloadImage(url) {
-  const response = await fetch(url, {
-    signal: AbortSignal.timeout(10000),
-    headers: {
-      "User-Agent": "Mozilla/5.0",
-      "Accept": "image/*"
-    }
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      "Falha HTTP " + response.status
-    );
-  }
-
-  const contentType =
-    response.headers.get("content-type") || "";
-
-  if (
-    contentType &&
-    !contentType.toLowerCase().startsWith("image/")
-  ) {
-    throw new Error(
-      "Resposta nao e uma imagem: " + contentType
-    );
-  }
-
-  return Buffer.from(
-    await response.arrayBuffer()
-  );
-}
-
-// ==========================================
-// IMAGEM PADRAO
-// ==========================================
-
-async function createFallbackImage() {
-  return sharp({
-    create: {
-      width: CARD_WIDTH,
-      height: CARD_HEIGHT,
-      channels: 4,
-      background: "#27272A"
-    }
-  })
-    .png()
-    .toBuffer();
-}
-
-// ==========================================
-// PREPARAR IMAGEM DO MAPA
-// ==========================================
-
-async function getMapBackground(map) {
+async function getBackground(map) {
   if (imageCache.has(map)) {
     return imageCache.get(map);
   }
 
-  let background;
+  let buffer;
 
   try {
-    const url = MAP_IMAGES[map];
+    const response = await fetch(MAP_IMAGES[map], {
+      signal: AbortSignal.timeout(10000),
+      headers: {
+        Accept: "image/*",
+        "User-Agent": "Mozilla/5.0"
+      }
+    });
 
-    if (!url) {
+    const contentType =
+      response.headers.get("content-type") || "";
+
+    if (
+      !response.ok ||
+      !contentType.startsWith("image/")
+    ) {
       throw new Error(
-        "URL nao encontrada para " + map
+        "HTTP " + response.status
       );
     }
 
-    const downloaded = await downloadImage(url);
-
-    background = await sharp(downloaded)
+    buffer = await sharp(
+      Buffer.from(await response.arrayBuffer())
+    )
       .resize(CARD_WIDTH, CARD_HEIGHT, {
-        fit: "cover",
-        position: "centre"
+        fit: "cover"
       })
       .png()
       .toBuffer();
 
   } catch (error) {
     console.warn(
-      "Falha ao carregar imagem de " +
-      map + ": " + error.message
+      "[mapVetoImage] " +
+      map +
+      ": " +
+      error.message
     );
 
-    background = await createFallbackImage();
-  }
-
-  if (imageCache.size >= CACHE_LIMIT) {
-    const firstKey =
-      imageCache.keys().next().value;
-
-    if (firstKey) {
-      imageCache.delete(firstKey);
-    }
-  }
-
-  imageCache.set(map, background);
-
-  return background;
-}
-
-// ==========================================
-// CRIAR SOBREPOSICAO SVG
-// ==========================================
-
-function createCardOverlay(
-  map,
-  isBanned,
-  isSelected,
-  banInfo
-) {
-  const label = escapeXml(map);
-
-  const statusColor = isSelected
-    ? COLORS.success
-    : isBanned
-      ? COLORS.primary
-      : COLORS.success;
-
-  const statusText = isSelected
-    ? "ESCOLHIDO"
-    : isBanned
-      ? "BANIDO"
-      : "DISPONIVEL";
-
-  const banTeam = getBanTeam(banInfo);
-
-  const teamText = banTeam
-    ? " - TIME " + escapeXml(banTeam)
-    : "";
-
-  const darkOverlay = isBanned
-    ? '<rect width="160" height="100" fill="#000000" opacity="0.70"/>'
-    : "";
-
-  const selectedBorder = isSelected
-    ? '<rect x="1.5" y="1.5" width="157" height="97" rx="6" fill="none" stroke="' +
-      COLORS.success +
-      '" stroke-width="3"/>'
-    : "";
-
-  const banMark = isBanned
-    ? '<path d="M62 32 L98 68 M98 32 L62 68" stroke="' +
-      COLORS.primary +
-      '" stroke-width="7" stroke-linecap="round"/>'
-    : "";
-
-  const svg = [
-    '<svg width="160" height="100" xmlns="http://www.w3.org/2000/svg">',
-
-    darkOverlay,
-
-    '<rect x="0" y="65" width="160" height="35" fill="#000000" opacity="0.84"/>',
-
-    banMark,
-
-    '<text x="8" y="80" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#FFFFFF">',
-    label,
-    '</text>',
-
-    '<text x="8" y="93" font-family="Arial, sans-serif" font-size="8" font-weight="bold" fill="',
-    statusColor,
-    '">',
-    statusText,
-    teamText,
-    '</text>',
-
-    selectedBorder,
-
-    '</svg>'
-  ].join("");
-
-  return Buffer.from(svg);
-}
-
-// ==========================================
-// CRIAR CARD DO MAPA
-// ==========================================
-
-async function createMapCard(
-  map,
-  bannedMaps,
-  selectedMap
-) {
-  const banInfo = getBanInfo(
-    map,
-    bannedMaps
-  );
-
-  const isBanned = Boolean(banInfo);
-  const isSelected = selectedMap === map;
-
-  const background = await getMapBackground(map);
-
-  const overlay = createCardOverlay(
-    map,
-    isBanned,
-    isSelected,
-    banInfo
-  );
-
-  return sharp(background)
-    .composite([
-      {
-        input: overlay,
-        top: 0,
-        left: 0
+    buffer = await sharp({
+      create: {
+        width: CARD_WIDTH,
+        height: CARD_HEIGHT,
+        channels: 4,
+        background: "#27272A"
       }
-    ])
-    .png()
-    .toBuffer();
-}
+    })
+      .png()
+      .toBuffer();
+  }
 
-// ==========================================
-// GERAR MOSAICO 3X3
-// ==========================================
+  imageCache.set(map, buffer);
+
+  return buffer;
+}
 
 async function generateMapVetoImage(options = {}) {
-  const bannedMaps = Array.isArray(options.bannedMaps)
-    ? options.bannedMaps
-    : [];
+  const bans = (
+    Array.isArray(options.bannedMaps)
+      ? options.bannedMaps
+      : []
+  )
+    .map(normalizeBan)
+    .filter(Boolean);
 
   const selectedMap =
     options.selectedMap || null;
 
   const cards = await Promise.all(
-    MAP_POOL.map(map =>
-      createMapCard(
-        map,
-        bannedMaps,
-        selectedMap
+    MAP_POOL.map(async map => {
+      const ban = bans.find(
+        item => item.map === map
+      );
+
+      const selected =
+        map === selectedMap;
+
+      const banned =
+        Boolean(ban) && !selected;
+
+      const color = selected
+        ? COLORS.success
+        : banned
+          ? COLORS.primary
+          : COLORS.success;
+
+      const status = selected
+        ? "ESCOLHIDO"
+        : banned
+          ? "BANIDO"
+          : "DISPONIVEL";
+
+      const team =
+        banned && (ban.captainTeam || ban.team)
+          ? " - TIME " +
+            String(
+              ban.captainTeam || ban.team
+            ).replace(/[^a-zA-Z0-9]/g, "")
+          : "";
+
+      const overlay = `
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="${CARD_WIDTH}"
+          height="${CARD_HEIGHT}"
+        >
+          ${
+            banned
+              ? `
+                <rect
+                  width="100%"
+                  height="100%"
+                  fill="#000"
+                  opacity="0.62"
+                />
+              `
+              : ""
+          }
+
+          <rect
+            x="0"
+            y="${CARD_HEIGHT - 47}"
+            width="${CARD_WIDTH}"
+            height="47"
+            fill="#000"
+            opacity="0.88"
+          />
+
+          ${
+            banned
+              ? `
+                <path
+                  d="
+                    M${CARD_WIDTH / 2 - 19} 35
+                    l38 38
+                    m0 -38
+                    l-38 38
+                  "
+                  fill="none"
+                  stroke="${COLORS.primary}"
+                  stroke-width="8"
+                  stroke-linecap="round"
+                />
+              `
+              : ""
+          }
+
+          <text
+            x="12"
+            y="${CARD_HEIGHT - 26}"
+            font-family="DejaVu Sans, sans-serif"
+            font-size="15"
+            font-weight="bold"
+            fill="white"
+          >${escapeXml(map)}</text>
+
+          <text
+            x="12"
+            y="${CARD_HEIGHT - 10}"
+            font-family="DejaVu Sans, sans-serif"
+            font-size="11"
+            font-weight="bold"
+            fill="${color}"
+          >${escapeXml(status + team)}</text>
+
+          ${
+            selected
+              ? `
+                <rect
+                  x="2"
+                  y="2"
+                  width="${CARD_WIDTH - 4}"
+                  height="${CARD_HEIGHT - 4}"
+                  rx="5"
+                  fill="none"
+                  stroke="${COLORS.success}"
+                  stroke-width="4"
+                />
+              `
+              : ""
+          }
+        </svg>
+      `;
+
+      return sharp(
+        await getBackground(map)
       )
-    )
+        .composite([
+          {
+            input: Buffer.from(overlay),
+            left: 0,
+            top: 0
+          }
+        ])
+        .png()
+        .toBuffer();
+    })
   );
 
   const composites = cards.map(
-    (input, index) => {
-      const column = index % COLUMNS;
-      const row = Math.floor(index / COLUMNS);
-
-      return {
-        input,
-        left:
-          PADDING +
-          column * (CARD_WIDTH + GAP),
-        top:
-          PADDING +
-          row * (CARD_HEIGHT + GAP)
-      };
-    }
+    (input, index) => ({
+      input,
+      left:
+        PADDING +
+        (index % COLUMNS) *
+          (CARD_WIDTH + GAP),
+      top:
+        PADDING +
+        Math.floor(index / COLUMNS) *
+          (CARD_HEIGHT + GAP)
+    })
   );
 
   return sharp({
@@ -389,10 +312,6 @@ async function generateMapVetoImage(options = {}) {
     .png()
     .toBuffer();
 }
-
-// ==========================================
-// EXPORTACOES
-// ==========================================
 
 module.exports = {
   MAP_POOL,
