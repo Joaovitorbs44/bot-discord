@@ -1,13 +1,22 @@
 
 const {
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
   ActionRowBuilder,
-  StringSelectMenuBuilder
+  StringSelectMenuBuilder,
+  MessageFlags
 } = require("discord.js");
 
 const db = require("../database/database");
 const queueState = require("./queueState");
 const { startDraft } = require("./drafts");
+
+const COLORS = {
+  primary: 0xFF3D2C,
+  success: 0x278451
+};
 
 let voteActive = false;
 let voteFinishing = false;
@@ -21,6 +30,10 @@ let votes = new Map();
 let voteMessage = null;
 let voteClient = null;
 let voteSessionId = null;
+
+// ==========================================
+// SESSÃO
+// ==========================================
 
 function getSession() {
   return queueState.getActiveSession();
@@ -61,66 +74,148 @@ function getCaptainPlayers() {
   return [...captainPlayers];
 }
 
-function createVotePanel(finished = false) {
-  const playerList = captainPlayers.map((player, index) =>
-    `**${index + 1}.** ${player.nickname} — ${player.rank}`
-  ).join("\n");
+// ==========================================
+// TEXTO SEGURO
+// ==========================================
 
-  const embed = new EmbedBuilder()
-    .setTitle("Votação de capitães")
-    .setDescription(
-      finished
-        ? `Votação encerrada!\n\n` +
-          `👑 **Time A:** <@${captainA.discordId}>\n` +
-          `👑 **Time B:** <@${captainB.discordId}>`
-        : "Cada jogador deve votar em um participante para capitão."
+function safeText(value, fallback = "Não informado") {
+  return String(value || fallback)
+    .replace(/\\/g, "\\\\")
+    .replace(/([*_~`|])/g, "\\$1")
+    .replace(/@/g, "@\u200b")
+    .slice(0, 80);
+}
+
+// ==========================================
+// PAINEL COMPONENTS V2
+// ==========================================
+
+function createVotePanel(finished = false) {
+  const count = votes.size;
+  const total = captainPlayers.length;
+  const remaining = Math.max(0, total - count);
+
+  const playerList = captainPlayers.length
+    ? captainPlayers.map((player, index) => {
+        return (
+          `**${String(index + 1).padStart(2, "0")}.** ` +
+          `${safeText(player.nickname)}\n` +
+          `-# ${safeText(player.rank)}`
+        );
+      }).join("\n")
+    : "Nenhum jogador disponível.";
+
+  const status = finished
+    ? "Votação encerrada"
+    : "Votação em andamento";
+
+  const description = finished
+    ? (
+      `### Capitães eleitos\n` +
+      `**Time A:** <@${captainA.discordId}>\n` +
+      `**Time B:** <@${captainB.discordId}>\n\n` +
+      "-# O draft de jogadores será iniciado."
     )
-    .addFields(
-      {
-        name: "Jogadores",
-        value: playerList || "Nenhum.",
-        inline: false
-      },
-      {
-        name: "Votos registrados",
-        value: `${votes.size}/${captainPlayers.length}`,
-        inline: true
-      }
+    : (
+      "Cada jogador deve escolher um participante para capitão.\n" +
+      "Os dois jogadores mais votados serão selecionados."
+    );
+
+  const container = new ContainerBuilder()
+    .setAccentColor(
+      finished ? COLORS.success : COLORS.primary
     )
-    .setFooter({
-      text: finished
-        ? "Draft de jogadores iniciado"
-        : "Rainbow Six Siege • Matchmaking"
-    });
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "## INVISIXTATIONAL\n" +
+        "### VOTAÇÃO DE CAPITÃES · 5V5"
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**Status:** ${status}\n` +
+        `**Votos registrados:** ${count}/${total}\n` +
+        `**Restantes:** ${remaining}`
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        description
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### Jogadores disponíveis\n${playerList}`
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        finished
+          ? "-# Votação concluída."
+          : "-# Cada jogador pode votar apenas uma vez."
+      )
+    );
 
   if (finished) {
     return {
-      embeds: [embed],
-      components: []
+      content: null,
+      embeds: [],
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { parse: [] }
     };
   }
 
   const select = new StringSelectMenuBuilder()
     .setCustomId("captain_vote")
-    .setPlaceholder("Vote em um capitão")
+    .setPlaceholder("Selecione um capitão")
     .setMinValues(1)
     .setMaxValues(1)
     .addOptions(
       captainPlayers.map(player => ({
-        label: String(player.nickname).slice(0, 100),
-        description:
-          `Rank: ${player.rank}`.slice(0, 100),
+        label: String(player.nickname || "Jogador")
+          .slice(0, 100),
+        description: `Rank: ${player.rank || "Não informado"}`
+          .slice(0, 100),
         value: player.discordId
       }))
     );
 
   return {
-    embeds: [embed],
+    content: null,
+    embeds: [],
     components: [
+      container,
       new ActionRowBuilder().addComponents(select)
-    ]
+    ],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] }
   };
 }
+
+// ==========================================
+// PERSISTÊNCIA
+// ==========================================
 
 function saveVoteState() {
   const session = getSession();
@@ -150,6 +245,10 @@ function saveVoteState() {
     voteSessionId
   );
 }
+
+// ==========================================
+// INICIAR VOTAÇÃO
+// ==========================================
 
 async function startCaptainVote(interaction, players) {
   if (voteActive) {
@@ -214,6 +313,10 @@ async function startCaptainVote(interaction, players) {
   }
 }
 
+// ==========================================
+// REGISTRAR VOTO
+// ==========================================
+
 async function handleCaptainVote(interaction) {
   const session = getSession();
 
@@ -226,7 +329,7 @@ async function handleCaptainVote(interaction) {
   ) {
     return interaction.reply({
       content: "Não existe uma votação de capitães ativa.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -236,21 +339,21 @@ async function handleCaptainVote(interaction) {
   if (!captainPlayers.some(p => p.discordId === voterId)) {
     return interaction.reply({
       content: "Você não participa desta votação.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
   if (votes.has(voterId)) {
     return interaction.reply({
       content: "Você já registrou seu voto.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
   if (!captainPlayers.some(p => p.discordId === selectedId)) {
     return interaction.reply({
       content: "Jogador selecionado inválido.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -266,30 +369,50 @@ async function handleCaptainVote(interaction) {
   }
 }
 
+// ==========================================
+// SELEÇÃO DOS CAPITÃES
+// ==========================================
+
 function selectCaptains() {
   const counts = new Map(
-    captainPlayers.map(player => [player.discordId, 0])
+    captainPlayers.map(player => [
+      player.discordId, 0
+    ])
   );
 
   for (const selectedId of votes.values()) {
-    counts.set(selectedId, (counts.get(selectedId) || 0) + 1);
+    counts.set(
+      selectedId,
+      (counts.get(selectedId) || 0) + 1
+    );
   }
 
   const ranked = [...captainPlayers];
 
   // Em caso de empate, embaralha antes de ordenar.
   for (let i = ranked.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [ranked[i], ranked[j]] = [ranked[j], ranked[i]];
+    const j = Math.floor(
+      Math.random() * (i + 1)
+    );
+
+    [ranked[i], ranked[j]] = [
+      ranked[j],
+      ranked[i]
+    ];
   }
 
   ranked.sort(
     (a, b) =>
-      counts.get(b.discordId) - counts.get(a.discordId)
+      counts.get(b.discordId) -
+      counts.get(a.discordId)
   );
 
   return [ranked[0], ranked[1]];
 }
+
+// ==========================================
+// FINALIZAR VOTAÇÃO
+// ==========================================
 
 async function finishCaptainVote(interaction = null) {
   if (!voteActive || voteFinishing) return;
@@ -346,16 +469,22 @@ async function finishCaptainVote(interaction = null) {
     try {
       await voteMessage.edit(createVotePanel(true));
     } catch (error) {
-      console.error("Erro ao encerrar painel de votação:", error);
+      console.error(
+        "Erro ao encerrar painel de votação:",
+        error
+      );
     }
   }
 
   const context = interaction || {
     client: voteClient,
-    followUp: async (payload) => {
+    followUp: async payload => {
       if (!voteMessage?.channel) {
-        throw new Error("CAPTAIN_VOTE_CHANNEL_UNAVAILABLE");
+        throw new Error(
+          "CAPTAIN_VOTE_CHANNEL_UNAVAILABLE"
+        );
       }
+
       return voteMessage.channel.send(payload);
     }
   };
@@ -370,15 +499,25 @@ async function finishCaptainVote(interaction = null) {
 
     resetCaptainVote();
   } catch (error) {
-    console.error("Erro ao iniciar draft:", error);
+    console.error(
+      "Erro ao iniciar draft:",
+      error
+    );
     throw error;
   }
 }
 
+// ==========================================
+// RECUPERAÇÃO APÓS REINÍCIO
+// ==========================================
+
 async function restoreCaptainVote(client) {
   const session = getSession();
 
-  if (!session || session.stage !== "captain_vote") {
+  if (
+    !session ||
+    session.stage !== "captain_vote"
+  ) {
     return false;
   }
 
@@ -397,13 +536,16 @@ async function restoreCaptainVote(client) {
     console.error(
       `Votação não recuperada: ${rows.length} jogadores encontrados.`
     );
+
     return false;
   }
 
   captainPlayers = rows.map(row => ({
     discordId: row.discord_id,
-    nickname: row.r6_nickname || row.discord_id,
-    rank: row.r6_rank || "Não informado"
+    nickname:
+      row.r6_nickname || row.discord_id,
+    rank:
+      row.r6_rank || "Não informado"
   }));
 
   let state = {};
@@ -423,7 +565,8 @@ async function restoreCaptainVote(client) {
   votes = new Map(
     Object.entries(state.votes || {}).filter(
       ([voter, selected]) =>
-        validIds.has(voter) && validIds.has(selected)
+        validIds.has(voter) &&
+        validIds.has(selected)
     )
   );
 
@@ -438,7 +581,9 @@ async function restoreCaptainVote(client) {
 
   if (!channel?.send) {
     resetCaptainVote();
-    throw new Error("CAPTAIN_VOTE_CHANNEL_NOT_FOUND");
+    throw new Error(
+      "CAPTAIN_VOTE_CHANNEL_NOT_FOUND"
+    );
   }
 
   if (state.messageId && channel.messages) {
@@ -452,10 +597,15 @@ async function restoreCaptainVote(client) {
   }
 
   if (!voteMessage) {
-    voteMessage = await channel.send(createVotePanel());
+    voteMessage = await channel.send(
+      createVotePanel()
+    );
+
     saveVoteState();
   } else {
-    await voteMessage.edit(createVotePanel());
+    await voteMessage.edit(
+      createVotePanel()
+    );
   }
 
   if (votes.size === captainPlayers.length) {
@@ -468,6 +618,10 @@ async function restoreCaptainVote(client) {
 
   return true;
 }
+
+// ==========================================
+// EXPORTAÇÕES
+// ==========================================
 
 module.exports = {
   startCaptainVote,
