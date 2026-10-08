@@ -36,6 +36,10 @@ const {
 } = require("../scripts/removeQueue");
 
 const {
+  handleRemoveTimeout
+} = require("../scripts/removeTimeout");
+
+const {
   handleHistory,
   handleMatchLookup
 } = require("../scripts/history");
@@ -109,7 +113,6 @@ initializeDatabase();
 // ==========================================
 
 const pendingAccessForms = new Map();
-
 const ACCESS_FORM_TIMEOUT_MS = 15 * 60 * 1000;
 
 // ==========================================
@@ -139,11 +142,15 @@ const client = new Client({
 });
 
 // ==========================================
-// INICIALIZAÇÃO
+// CONTROLE DE INICIALIZAÇÃO
 // ==========================================
 
 let matchmakingInitialized = false;
 let matchmakingInitializing = false;
+
+// ==========================================
+// RECUPERAÇÃO DO MATCHMAKING
+// ==========================================
 
 async function initializeMatchmaking(readyClient) {
   if (matchmakingInitialized || matchmakingInitializing) {
@@ -157,10 +164,6 @@ async function initializeMatchmaking(readyClient) {
   );
 
   try {
-    // ======================================
-    // 1. RESTAURAR JOGADORES
-    // ======================================
-
     const recovery = queueState.restoreQueueState();
 
     console.log(
@@ -170,10 +173,6 @@ async function initializeMatchmaking(readyClient) {
     console.log(
       `Etapa encontrada: ${recovery.stage}`
     );
-
-    // ======================================
-    // 2. RESTAURAR PAINEL DA FILA
-    // ======================================
 
     const queueMessage = await restoreQueuePanel(
       readyClient
@@ -188,10 +187,6 @@ async function initializeMatchmaking(readyClient) {
         "Não foi possível localizar o painel da fila."
       );
     }
-
-    // ======================================
-    // 3. RESTAURAR ETAPA ATIVA
-    // ======================================
 
     const session = queueState.getActiveSession();
 
@@ -212,22 +207,12 @@ async function initializeMatchmaking(readyClient) {
         recoveryHandlers[session.stage];
 
       if (session.stage === "queue") {
-        console.log(
-          "Fila restaurada e disponível."
-        );
-      } else if (
-        session.stage === "playing"
-      ) {
+        console.log("Fila restaurada e disponível.");
+      } else if (session.stage === "playing") {
         console.log(
           "Partida em andamento encontrada."
         );
-
-        console.log(
-          "Os resultados continuam registrados no banco de dados."
-        );
-      } else if (
-        typeof restoreHandler === "function"
-      ) {
+      } else if (typeof restoreHandler === "function") {
         console.log(
           `Recuperando etapa: ${session.stage}`
         );
@@ -237,15 +222,11 @@ async function initializeMatchmaking(readyClient) {
             readyClient
           );
 
-          if (restored) {
-            console.log(
-              `Etapa ${session.stage} recuperada.`
-            );
-          } else {
-            console.warn(
-              `Não foi possível recuperar ${session.stage}.`
-            );
-          }
+          console.log(
+            restored
+              ? `Etapa ${session.stage} recuperada.`
+              : `Não foi possível recuperar ${session.stage}.`
+          );
         } catch (error) {
           console.error(
             `Erro ao recuperar ${session.stage}:`,
@@ -258,10 +239,6 @@ async function initializeMatchmaking(readyClient) {
         );
       }
     }
-
-    // ======================================
-    // 4. SINCRONIZAR PAINEL
-    // ======================================
 
     try {
       await updateQueuePanel();
@@ -310,10 +287,7 @@ client.on(
   Events.InteractionCreate,
   async (interaction) => {
     try {
-      // ======================================
       // SOLICITAR ACESSO
-      // ======================================
-
       if (
         interaction.isButton() &&
         interaction.customId === "access_request"
@@ -321,10 +295,7 @@ client.on(
         return handleAccess(interaction);
       }
 
-      // ======================================
       // FORMULÁRIO
-      // ======================================
-
       if (
         interaction.isModalSubmit() &&
         interaction.customId === "access_modal"
@@ -332,10 +303,7 @@ client.on(
         return handleAccessModal(interaction);
       }
 
-      // ======================================
       // SELEÇÃO DE RANK
-      // ======================================
-
       if (
         interaction.isStringSelectMenu() &&
         interaction.customId === "access_rank"
@@ -343,36 +311,23 @@ client.on(
         return handleAccessRank(interaction);
       }
 
-      // ======================================
-      // APROVAR
-      // ======================================
-
+      // APROVAR ACESSO
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith(
-          "access_approve:"
-        )
+        interaction.customId.startsWith("access_approve:")
       ) {
         return handleApprove(interaction);
       }
 
-      // ======================================
-      // REJEITAR
-      // ======================================
-
+      // REJEITAR ACESSO
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith(
-          "access_reject:"
-        )
+        interaction.customId.startsWith("access_reject:")
       ) {
         return handleReject(interaction);
       }
 
-      // ======================================
       // FILA
-      // ======================================
-
       if (
         interaction.isButton() &&
         (
@@ -391,34 +346,23 @@ client.on(
         return handleQueue(interaction);
       }
 
-      // ======================================
-      // LIMPAR FILA
-      // ======================================
-
+      // LIMPAR FILA - CONFIRMAR
       if (
         interaction.isButton() &&
-        interaction.customId ===
-          "clear_queue_confirm"
+        interaction.customId === "clear_queue_confirm"
       ) {
-        return handleClearQueueConfirm(
-          interaction
-        );
+        return handleClearQueueConfirm(interaction);
       }
 
+      // LIMPAR FILA - CANCELAR
       if (
         interaction.isButton() &&
-        interaction.customId ===
-          "clear_queue_cancel"
+        interaction.customId === "clear_queue_cancel"
       ) {
-        return handleClearQueueCancel(
-          interaction
-        );
+        return handleClearQueueCancel(interaction);
       }
 
-      // ======================================
       // READY CHECK
-      // ======================================
-
       if (
         interaction.isButton() &&
         interaction.customId === "ready_confirm"
@@ -426,10 +370,7 @@ client.on(
         return handleReadyCheck(interaction);
       }
 
-      // ======================================
       // VOTAÇÃO DE CAPITÃES
-      // ======================================
-
       if (
         interaction.isStringSelectMenu() &&
         interaction.customId === "captain_vote"
@@ -437,10 +378,7 @@ client.on(
         return handleCaptainVote(interaction);
       }
 
-      // ======================================
       // DRAFT
-      // ======================================
-
       if (
         interaction.isStringSelectMenu() &&
         interaction.customId === "draft_pick"
@@ -448,10 +386,7 @@ client.on(
         return handleDraftPick(interaction);
       }
 
-      // ======================================
       // VETO DE MAPAS
-      // ======================================
-
       if (
         interaction.isStringSelectMenu() &&
         interaction.customId === "map_veto"
@@ -459,10 +394,7 @@ client.on(
         return handleMapVeto(interaction);
       }
 
-      // ======================================
       // ESCOLHA DE LADO
-      // ======================================
-
       if (
         interaction.isButton() &&
         (
@@ -473,64 +405,50 @@ client.on(
         return handleSideChoice(interaction);
       }
 
-      // ======================================
-      // RESULTADOS
-      // ======================================
-
+      // INFORMAR RESULTADO
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith(
-          "result_report:"
-        )
+        interaction.customId.startsWith("result_report:")
       ) {
         return handleResultReport(interaction);
       }
 
+      // SELECIONAR VENCEDOR
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith(
-          "result_winner:"
-        )
+        interaction.customId.startsWith("result_winner:")
       ) {
         return handleWinnerSelection(interaction);
       }
 
+      // CONFIRMAR RESULTADO
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith(
-          "result_confirm:"
-        )
+        interaction.customId.startsWith("result_confirm:")
       ) {
-        return handleResultConfirmation(
-          interaction
-        );
+        return handleResultConfirmation(interaction);
       }
 
+      // CONTESTAR RESULTADO
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith(
-          "result_dispute:"
-        )
+        interaction.customId.startsWith("result_dispute:")
       ) {
-        return handleResultDispute(
-          interaction
-        );
+        return handleResultDispute(interaction);
       }
 
+      // STAFF DEFINE RESULTADO
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith(
-          "staff_result:"
-        )
+        interaction.customId.startsWith("staff_result:")
       ) {
         return handleStaffResult(interaction);
       }
 
+      // STAFF CANCELA PARTIDA
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith(
-          "staff_cancel:"
-        )
+        interaction.customId.startsWith("staff_cancel:")
       ) {
         return handleStaffCancel(interaction);
       }
@@ -561,7 +479,6 @@ client.on(
                 ephemeral: true
               });
             }
-
             return handleSeason(interaction);
 
           case "temporadas":
@@ -572,21 +489,20 @@ client.on(
                 ephemeral: true
               });
             }
-
             return handleSeasons(interaction);
 
           case "solicitacoes":
             return handleSolicitacoes(interaction);
 
           case "remover-fila":
-            return handleRemoveQueueCommand(
-              interaction
-            );
+            return handleRemoveQueueCommand(interaction);
 
           case "limpar-fila":
-            return handleClearQueueCommand(
-              interaction
-            );
+            return handleClearQueueCommand(interaction);
+
+          // NOVO: REMOVER TIMEOUT DO READY CHECK
+          case "remover-timeout":
+            return handleRemoveTimeout(interaction);
 
           default:
             return;
@@ -673,11 +589,7 @@ async function handleAccessModal(interaction) {
     .getTextInputValue("r6_nickname")
     .trim();
 
-  if (
-    !name ||
-    !twitchNickname ||
-    !r6Nickname
-  ) {
+  if (!name || !twitchNickname || !r6Nickname) {
     return interaction.reply({
       content:
         "Preencha todos os campos da solicitação.",
@@ -695,43 +607,38 @@ async function handleAccessModal(interaction) {
     }
   );
 
-  const rankSelect =
-    new StringSelectMenuBuilder()
-      .setCustomId("access_rank")
-      .setPlaceholder(
-        "Selecione seu rank atual"
-      )
-      .setMinValues(1)
-      .setMaxValues(1)
-      .addOptions(R6_RANKS);
+  const rankSelect = new StringSelectMenuBuilder()
+    .setCustomId("access_rank")
+    .setPlaceholder("Selecione seu rank atual")
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(R6_RANKS);
 
-  const row =
-    new ActionRowBuilder()
-      .addComponents(rankSelect);
+  const row = new ActionRowBuilder()
+    .addComponents(rankSelect);
 
-  const embed =
-    new EmbedBuilder()
-      .setTitle("Selecione seu rank")
-      .setDescription(
-        "Agora selecione seu rank atual no Rainbow Six Siege."
-      )
-      .addFields(
-        {
-          name: "Nome",
-          value: name,
-          inline: true
-        },
-        {
-          name: "Twitch",
-          value: `@${twitchNickname}`,
-          inline: true
-        },
-        {
-          name: "Nickname R6",
-          value: r6Nickname,
-          inline: true
-        }
-      );
+  const embed = new EmbedBuilder()
+    .setTitle("Selecione seu rank")
+    .setDescription(
+      "Agora selecione seu rank atual no Rainbow Six Siege."
+    )
+    .addFields(
+      {
+        name: "Nome",
+        value: name,
+        inline: true
+      },
+      {
+        name: "Twitch",
+        value: `@${twitchNickname}`,
+        inline: true
+      },
+      {
+        name: "Nickname R6",
+        value: r6Nickname,
+        inline: true
+      }
+    );
 
   return interaction.reply({
     embeds: [embed],
@@ -769,7 +676,7 @@ async function handleAccessRank(interaction) {
   const r6Rank = interaction.values[0];
 
   const validRank = R6_RANKS.some(
-    (rank) => rank.value === r6Rank
+    rank => rank.value === r6Rank
   );
 
   if (!validRank) {
