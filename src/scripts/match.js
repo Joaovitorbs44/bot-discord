@@ -181,7 +181,7 @@ function createMatchPanel(match, data, season) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `### 🔴 TIME A · ${sideIcon(data.sideA)} ${data.sideA}\n` +
+        `### 🟠 TIME A · ${sideIcon(data.sideA)} ${data.sideA}\n` +
         createTeamList(
           data.teamA,
           data.captainA
