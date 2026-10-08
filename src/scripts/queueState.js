@@ -1,34 +1,203 @@
-const queue =
-  new Map();
 
-const cooldowns =
-  new Map();
+const db = require("../database/database");
+const config = require("../config/config");
 
-let queueMessage =
-  null;
+// ==========================================
+// ESTADO EM MEMÓRIA
+// ==========================================
 
-let queueLocked =
-  false;
+const queue = new Map();
+const cooldowns = new Map();
 
-/*
- * Adiciona um jogador
- * à fila.
- */
-function addPlayer(
-  player
-) {
+let queueMessage = null;
+let queueLocked = false;
+
+// ==========================================
+// CONFIGURAÇÃO
+// ==========================================
+
+function getGuildId() {
+  return config.discord.guildId;
+}
+
+// ==========================================
+// SESSÃO PERSISTENTE
+// ==========================================
+
+function getActiveSession() {
+  return db.prepare(`
+    SELECT *
+    FROM matchmaking_sessions
+    WHERE guild_id = ?
+      AND status = 'active'
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(getGuildId()) || null;
+}
+
+function getOrCreateSession() {
+  const existing = getActiveSession();
+
+  if (existing) {
+    return existing;
+  }
+
+  db.prepare(`
+    INSERT INTO matchmaking_sessions (
+      guild_id,
+      channel_id,
+      stage,
+      status,
+      state_json
+    )
+    VALUES (?, ?, 'queue', 'active', '{}')
+  `).run(
+    getGuildId(),
+    config.discord.queueChannelId
+  );
+
+  return getActiveSession();
+}
+
+function updateSession(fields = {}) {
+  const session = getOrCreateSession();
+
+  const allowed = [
+    "channel_id",
+    "message_id",
+    "stage",
+    "status",
+    "captain_a_discord_id",
+    "captain_b_discord_id",
+    "current_turn_discord_id",
+    "deadline_at",
+    "state_json",
+    "match_id"
+  ];
+
+  const entries = Object.entries(fields)
+    .filter(([key]) => allowed.includes(key));
+
+  if (!entries.length) {
+    return session;
+  }
+
+  const assignments = entries
+    .map(([key]) => `${key} = ?`)
+    .join(", ");
+
+  const values = entries.map(
+    ([, value]) => value
+  );
+
+  db.prepare(`
+    UPDATE matchmaking_sessions
+    SET ${assignments},
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    ...values,
+    Date.now(),
+    session.id
+  );
+
+  return getActiveSession();
+}
+
+// ==========================================
+// RESTAURAÇÃO DA FILA
+// ==========================================
+
+function restoreQueueState() {
+  queue.clear();
+
+  const session = getActiveSession();
+
+  if (!session) {
+    queueLocked = false;
+
+    console.log(
+      "Nenhuma sessão anterior encontrada."
+    );
+
+    return {
+      restored: 0,
+      locked: false,
+      stage: "queue"
+    };
+  }
+
+  const rows = db.prepare(`
+    SELECT
+      sp.discord_id,
+      p.r6_nickname,
+      p.r6_rank
+    FROM matchmaking_session_players sp
+    LEFT JOIN players p
+      ON p.discord_id = sp.discord_id
+    WHERE sp.session_id = ?
+    ORDER BY sp.joined_at ASC, sp.id ASC
+  `).all(session.id);
+
+  for (const row of rows) {
+    queue.set(row.discord_id, {
+      discordId: row.discord_id,
+      nickname:
+        row.r6_nickname ||
+        row.discord_id,
+      rank:
+        row.r6_rank ||
+        "Não informado"
+    });
+  }
+
+  queueLocked = session.stage !== "queue";
+
+  console.log(
+    `Fila recuperada: ${queue.size} jogadores. Etapa: ${session.stage}.`
+  );
+
+  return {
+    restored: queue.size,
+    locked: queueLocked,
+    stage: session.stage,
+    sessionId: session.id
+  };
+}
+
+// ==========================================
+// ADICIONAR JOGADOR
+// ==========================================
+
+function addPlayer(player) {
   if (
     !player ||
-    !player.discordId
+    !player.discordId ||
+    queue.has(player.discordId) ||
+    isQueueLocked()
   ) {
     return false;
   }
 
-  if (
-    queue.has(
-      player.discordId
-    )
-  ) {
+  const session = getOrCreateSession();
+
+  if (session.stage !== "queue") {
+    return false;
+  }
+
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO
+      matchmaking_session_players (
+        session_id,
+        discord_id
+      )
+    VALUES (?, ?)
+  `).run(
+    session.id,
+    player.discordId
+  );
+
+  if (insert.changes === 0) {
     return false;
   }
 
@@ -40,44 +209,40 @@ function addPlayer(
   return true;
 }
 
-/*
- * Remove um jogador.
- */
-function removePlayer(
-  discordId
-) {
-  return queue.delete(
-    discordId
-  );
+// ==========================================
+// REMOVER JOGADOR
+// ==========================================
+
+function removePlayer(discordId) {
+  const session = getActiveSession();
+
+  if (session) {
+    db.prepare(`
+      DELETE FROM matchmaking_session_players
+      WHERE session_id = ?
+        AND discord_id = ?
+    `).run(
+      session.id,
+      discordId
+    );
+  }
+
+  return queue.delete(discordId);
 }
 
-/*
- * Remove vários jogadores.
- */
-function removePlayers(
-  discordIds
-) {
-  if (
-    !Array.isArray(
-      discordIds
-    )
-  ) {
+// ==========================================
+// REMOVER VÁRIOS
+// ==========================================
+
+function removePlayers(discordIds) {
+  if (!Array.isArray(discordIds)) {
     return 0;
   }
 
-  let removed =
-    0;
+  let removed = 0;
 
-  for (
-    const discordId
-    of discordIds
-  ) {
-    const deleted =
-      queue.delete(
-        discordId
-      );
-
-    if (deleted) {
+  for (const discordId of discordIds) {
+    if (removePlayer(discordId)) {
       removed++;
     }
   }
@@ -85,146 +250,188 @@ function removePlayers(
   return removed;
 }
 
-/*
- * Limpa completamente
- * a fila.
- *
- * Retorna quantos jogadores
- * foram removidos.
- */
+// ==========================================
+// LIMPAR FILA
+// ==========================================
+
 function clearQueue() {
-  const removedPlayers =
-    queue.size;
+  const removed = queue.size;
+
+  const session = getActiveSession();
+
+  if (session) {
+    db.prepare(`
+      DELETE FROM matchmaking_session_players
+      WHERE session_id = ?
+    `).run(session.id);
+
+    db.prepare(`
+      UPDATE matchmaking_sessions
+      SET stage = 'queue',
+          deadline_at = NULL,
+          current_turn_discord_id = NULL,
+          captain_a_discord_id = NULL,
+          captain_b_discord_id = NULL,
+          state_json = '{}',
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      Date.now(),
+      session.id
+    );
+  }
 
   queue.clear();
-
   cooldowns.clear();
 
-  return removedPlayers;
+  return removed;
 }
 
-/*
- * Verifica se determinado
- * jogador está na fila.
- */
-function hasPlayer(
-  discordId
-) {
-  return queue.has(
-    discordId
-  );
+// ==========================================
+// CONSULTAS
+// ==========================================
+
+function hasPlayer(discordId) {
+  return queue.has(discordId);
 }
 
-/*
- * Retorna os jogadores
- * atuais da fila.
- */
 function getPlayers() {
-  return Array.from(
-    queue.values()
-  );
+  return Array.from(queue.values());
 }
 
-/*
- * Retorna a quantidade
- * de jogadores.
- */
 function getSize() {
   return queue.size;
 }
 
-/*
- * Salva a mensagem principal
- * do painel da fila.
- */
-function setQueueMessage(
-  message
-) {
-  queueMessage =
-    message;
+// ==========================================
+// MENSAGEM DA FILA
+// ==========================================
+
+function setQueueMessage(message) {
+  queueMessage = message;
+
+  if (message && message.id) {
+    const session = getOrCreateSession();
+
+    db.prepare(`
+      UPDATE matchmaking_sessions
+      SET message_id = ?,
+          channel_id = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      message.id,
+      message.channelId ||
+        config.discord.queueChannelId,
+      Date.now(),
+      session.id
+    );
+  }
 }
 
-/*
- * Retorna a mensagem
- * principal da fila.
- */
 function getQueueMessage() {
   return queueMessage;
 }
 
-/*
- * Bloqueia a fila.
- */
+// ==========================================
+// BLOQUEIO
+// ==========================================
+
 function lockQueue() {
-  queueLocked =
-    true;
+  queueLocked = true;
+
+  const session = getOrCreateSession();
+
+  if (session.stage === "queue") {
+    updateSession({
+      stage: "ready_check"
+    });
+  }
 }
 
-/*
- * Libera a fila.
- */
 function unlockQueue() {
-  queueLocked =
-    false;
+  queueLocked = false;
+
+  const session = getActiveSession();
+
+  if (session && session.stage !== "queue") {
+    updateSession({
+      stage: "queue",
+      deadline_at: null
+    });
+  }
 }
 
-/*
- * Verifica se a fila
- * está bloqueada.
- */
 function isQueueLocked() {
   return queueLocked;
 }
 
-/*
- * Define cooldown para
- * determinado jogador.
- */
-function setCooldown(
-  discordId
-) {
+// ==========================================
+// COOLDOWN CURTO
+// ==========================================
+
+function setCooldown(discordId) {
   cooldowns.set(
     discordId,
     Date.now()
   );
 }
 
-/*
- * Retorna quantos milissegundos
- * ainda faltam para o jogador
- * poder usar a fila novamente.
- */
 function getCooldownRemaining(
   discordId,
   cooldownSeconds
 ) {
-  const lastAction =
-    cooldowns.get(
-      discordId
-    );
+  const lastAction = cooldowns.get(
+    discordId
+  );
 
   if (!lastAction) {
     return 0;
   }
 
-  const cooldownMs =
-    cooldownSeconds *
-    1000;
+  const remaining =
+    cooldownSeconds * 1000 -
+    (Date.now() - lastAction);
 
-  const elapsed =
-    Date.now() -
-    lastAction;
+  if (remaining <= 0) {
+    cooldowns.delete(discordId);
+    return 0;
+  }
+
+  return remaining;
+}
+
+function clearCooldown(discordId) {
+  cooldowns.delete(discordId);
+}
+
+function clearCooldowns() {
+  cooldowns.clear();
+}
+
+// ==========================================
+// COOLDOWN POR PENALIDADE
+// ==========================================
+
+function getPenaltyRemaining(discordId) {
+  const penalty = db.prepare(`
+    SELECT expires_at
+    FROM player_cooldowns
+    WHERE discord_id = ?
+  `).get(discordId);
+
+  if (!penalty) {
+    return 0;
+  }
 
   const remaining =
-    cooldownMs -
-    elapsed;
+    penalty.expires_at - Date.now();
 
-  if (
-    remaining <= 0
-  ) {
-    cooldowns.delete(
-      discordId
-    );
+  if (remaining <= 0) {
+    db.prepare(`
+      DELETE FROM player_cooldowns
+      WHERE discord_id = ?
+    `).run(discordId);
 
     return 0;
   }
@@ -232,24 +439,9 @@ function getCooldownRemaining(
   return remaining;
 }
 
-/*
- * Remove o cooldown
- * de um jogador.
- */
-function clearCooldown(
-  discordId
-) {
-  cooldowns.delete(
-    discordId
-  );
-}
-
-/*
- * Limpa todos os cooldowns.
- */
-function clearCooldowns() {
-  cooldowns.clear();
-}
+// ==========================================
+// EXPORTAÇÕES
+// ==========================================
 
 module.exports = {
   addPlayer,
@@ -271,5 +463,11 @@ module.exports = {
   setCooldown,
   getCooldownRemaining,
   clearCooldown,
-  clearCooldowns
+  clearCooldowns,
+
+  getActiveSession,
+  getOrCreateSession,
+  updateSession,
+  restoreQueueState,
+  getPenaltyRemaining
 };
