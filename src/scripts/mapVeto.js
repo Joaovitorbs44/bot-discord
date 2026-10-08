@@ -244,7 +244,7 @@ async function createMapVetoPanel() {
 
   addText(
     container,
-    "## INVISIXTATIONAL\n" +
+    "## INVISIX PRO\n" +
     "### PICK & BAN · MELHOR DE 1\n" +
     "-# Rainbow Six Siege · Matchmaking competitivo"
   );
