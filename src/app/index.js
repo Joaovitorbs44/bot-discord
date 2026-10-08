@@ -39,11 +39,23 @@ const {
   handleRemoveTimeout
 } = require("../scripts/removeTimeout");
 
+// ==========================================
 // PAINEL DA STAFF
+// ==========================================
+
 const {
   handleStaffPanel,
   handleStaffPanelButton
 } = require("../scripts/staffPanel");
+
+// ==========================================
+// PREVIEW - NOVO
+// ==========================================
+
+const {
+  executePreview,
+  handlePreviewSelect
+} = require("../scripts/preview");
 
 const {
   handleHistory,
@@ -119,7 +131,9 @@ initializeDatabase();
 // ==========================================
 
 const pendingAccessForms = new Map();
-const ACCESS_FORM_TIMEOUT_MS = 15 * 60 * 1000;
+
+const ACCESS_FORM_TIMEOUT_MS =
+  15 * 60 * 1000;
 
 // ==========================================
 // RANKS R6
@@ -159,7 +173,10 @@ let matchmakingInitializing = false;
 // ==========================================
 
 async function initializeMatchmaking(readyClient) {
-  if (matchmakingInitialized || matchmakingInitializing) {
+  if (
+    matchmakingInitialized ||
+    matchmakingInitializing
+  ) {
     return;
   }
 
@@ -213,12 +230,16 @@ async function initializeMatchmaking(readyClient) {
         recoveryHandlers[session.stage];
 
       if (session.stage === "queue") {
-        console.log("Fila restaurada e disponível.");
+        console.log(
+          "Fila restaurada e disponível."
+        );
       } else if (session.stage === "playing") {
         console.log(
           "Partida em andamento encontrada."
         );
-      } else if (typeof restoreHandler === "function") {
+      } else if (
+        typeof restoreHandler === "function"
+      ) {
         console.log(
           `Recuperando etapa: ${session.stage}`
         );
@@ -276,7 +297,7 @@ async function initializeMatchmaking(readyClient) {
 
 client.once(
   Events.ClientReady,
-  async (readyClient) => {
+  async readyClient => {
     console.log(
       `Bot conectado como ${readyClient.user.tag}`
     );
@@ -291,9 +312,24 @@ client.once(
 
 client.on(
   Events.InteractionCreate,
-  async (interaction) => {
+  async interaction => {
     try {
+
+      // ======================================
+      // PREVIEW - MENU INTERATIVO
+      // ======================================
+
+      if (
+        interaction.isStringSelectMenu() &&
+        interaction.customId === "preview_select"
+      ) {
+        return handlePreviewSelect(interaction);
+      }
+
+      // ======================================
       // SOLICITAR ACESSO
+      // ======================================
+
       if (
         interaction.isButton() &&
         interaction.customId === "access_request"
@@ -301,7 +337,10 @@ client.on(
         return handleAccess(interaction);
       }
 
+      // ======================================
       // FORMULÁRIO
+      // ======================================
+
       if (
         interaction.isModalSubmit() &&
         interaction.customId === "access_modal"
@@ -309,7 +348,10 @@ client.on(
         return handleAccessModal(interaction);
       }
 
+      // ======================================
       // SELEÇÃO DE RANK
+      // ======================================
+
       if (
         interaction.isStringSelectMenu() &&
         interaction.customId === "access_rank"
@@ -317,34 +359,49 @@ client.on(
         return handleAccessRank(interaction);
       }
 
+      // ======================================
       // APROVAR ACESSO
+      // ======================================
+
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith("access_approve:")
+        interaction.customId.startsWith(
+          "access_approve:"
+        )
       ) {
         return handleApprove(interaction);
       }
 
+      // ======================================
       // REJEITAR ACESSO
+      // ======================================
+
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith("access_reject:")
+        interaction.customId.startsWith(
+          "access_reject:"
+        )
       ) {
         return handleReject(interaction);
       }
 
       // ======================================
-      // PAINEL DA STAFF - BOTÕES
+      // PAINEL DA STAFF
       // ======================================
 
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith("staff_panel:")
+        interaction.customId.startsWith(
+          "staff_panel:"
+        )
       ) {
         return handleStaffPanelButton(interaction);
       }
 
+      // ======================================
       // FILA
+      // ======================================
+
       if (
         interaction.isButton() &&
         (
@@ -355,7 +412,8 @@ client.on(
         if (!matchmakingInitialized) {
           return interaction.reply({
             content:
-              "O matchmaking está inicializando. Tente novamente em instantes.",
+              "O matchmaking está inicializando. " +
+              "Tente novamente em instantes.",
             ephemeral: true
           });
         }
@@ -363,23 +421,34 @@ client.on(
         return handleQueue(interaction);
       }
 
+      // ======================================
       // LIMPAR FILA - CONFIRMAR
+      // ======================================
+
       if (
         interaction.isButton() &&
-        interaction.customId === "clear_queue_confirm"
+        interaction.customId ===
+          "clear_queue_confirm"
       ) {
         return handleClearQueueConfirm(interaction);
       }
 
+      // ======================================
       // LIMPAR FILA - CANCELAR
+      // ======================================
+
       if (
         interaction.isButton() &&
-        interaction.customId === "clear_queue_cancel"
+        interaction.customId ===
+          "clear_queue_cancel"
       ) {
         return handleClearQueueCancel(interaction);
       }
 
+      // ======================================
       // READY CHECK
+      // ======================================
+
       if (
         interaction.isButton() &&
         interaction.customId === "ready_confirm"
@@ -387,7 +456,10 @@ client.on(
         return handleReadyCheck(interaction);
       }
 
+      // ======================================
       // VOTAÇÃO DE CAPITÃES
+      // ======================================
+
       if (
         interaction.isStringSelectMenu() &&
         interaction.customId === "captain_vote"
@@ -395,7 +467,10 @@ client.on(
         return handleCaptainVote(interaction);
       }
 
+      // ======================================
       // DRAFT
+      // ======================================
+
       if (
         interaction.isStringSelectMenu() &&
         interaction.customId === "draft_pick"
@@ -403,7 +478,10 @@ client.on(
         return handleDraftPick(interaction);
       }
 
+      // ======================================
       // VETO DE MAPAS
+      // ======================================
+
       if (
         interaction.isStringSelectMenu() &&
         interaction.customId === "map_veto"
@@ -411,7 +489,10 @@ client.on(
         return handleMapVeto(interaction);
       }
 
+      // ======================================
       // ESCOLHA DE LADO
+      // ======================================
+
       if (
         interaction.isButton() &&
         (
@@ -422,50 +503,80 @@ client.on(
         return handleSideChoice(interaction);
       }
 
+      // ======================================
       // INFORMAR RESULTADO
+      // ======================================
+
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith("result_report:")
+        interaction.customId.startsWith(
+          "result_report:"
+        )
       ) {
         return handleResultReport(interaction);
       }
 
+      // ======================================
       // SELECIONAR VENCEDOR
+      // ======================================
+
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith("result_winner:")
+        interaction.customId.startsWith(
+          "result_winner:"
+        )
       ) {
         return handleWinnerSelection(interaction);
       }
 
+      // ======================================
       // CONFIRMAR RESULTADO
+      // ======================================
+
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith("result_confirm:")
+        interaction.customId.startsWith(
+          "result_confirm:"
+        )
       ) {
         return handleResultConfirmation(interaction);
       }
 
+      // ======================================
       // CONTESTAR RESULTADO
+      // ======================================
+
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith("result_dispute:")
+        interaction.customId.startsWith(
+          "result_dispute:"
+        )
       ) {
         return handleResultDispute(interaction);
       }
 
+      // ======================================
       // STAFF DEFINE RESULTADO
+      // ======================================
+
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith("staff_result:")
+        interaction.customId.startsWith(
+          "staff_result:"
+        )
       ) {
         return handleStaffResult(interaction);
       }
 
+      // ======================================
       // STAFF CANCELA PARTIDA
+      // ======================================
+
       if (
         interaction.isButton() &&
-        interaction.customId.startsWith("staff_cancel:")
+        interaction.customId.startsWith(
+          "staff_cancel:"
+        )
       ) {
         return handleStaffCancel(interaction);
       }
@@ -476,6 +587,10 @@ client.on(
 
       if (interaction.isChatInputCommand()) {
         switch (interaction.commandName) {
+
+          case "preview":
+            return executePreview(interaction);
+
           case "perfil":
             return handleProfile(interaction);
 
@@ -489,10 +604,13 @@ client.on(
             return handleMatchLookup(interaction);
 
           case "temporada":
-            if (typeof handleSeason !== "function") {
+            if (
+              typeof handleSeason !== "function"
+            ) {
               return interaction.reply({
                 content:
-                  "O comando de temporada ainda não está configurado.",
+                  "O comando de temporada " +
+                  "ainda não está configurado.",
                 ephemeral: true
               });
             }
@@ -500,10 +618,13 @@ client.on(
             return handleSeason(interaction);
 
           case "temporadas":
-            if (typeof handleSeasons !== "function") {
+            if (
+              typeof handleSeasons !== "function"
+            ) {
               return interaction.reply({
                 content:
-                  "O histórico de temporadas ainda não está configurado.",
+                  "O histórico de temporadas " +
+                  "ainda não está configurado.",
                 ephemeral: true
               });
             }
@@ -514,17 +635,17 @@ client.on(
             return handleSolicitacoes(interaction);
 
           case "remover-fila":
-            return handleRemoveQueueCommand(interaction);
+            return handleRemoveQueueCommand(
+              interaction
+            );
 
           case "limpar-fila":
-            return handleClearQueueCommand(interaction);
+            return handleClearQueueCommand(
+              interaction
+            );
 
           case "remover-timeout":
             return handleRemoveTimeout(interaction);
-
-          // ==================================
-          // PAINEL DA STAFF - COMANDO
-          // ==================================
 
           case "painel-staff":
             return handleStaffPanel(interaction);
@@ -614,7 +735,11 @@ async function handleAccessModal(interaction) {
     .getTextInputValue("r6_nickname")
     .trim();
 
-  if (!name || !twitchNickname || !r6Nickname) {
+  if (
+    !name ||
+    !twitchNickname ||
+    !r6Nickname
+  ) {
     return interaction.reply({
       content:
         "Preencha todos os campos da solicitação.",
@@ -645,7 +770,8 @@ async function handleAccessModal(interaction) {
   const embed = new EmbedBuilder()
     .setTitle("Selecione seu rank")
     .setDescription(
-      "Agora selecione seu rank atual no Rainbow Six Siege."
+      "Agora selecione seu rank atual " +
+      "no Rainbow Six Siege."
     )
     .addFields(
       {
@@ -692,7 +818,8 @@ async function handleAccessRank(interaction) {
 
     return interaction.update({
       content:
-        "Sua solicitação expirou. Clique novamente em Solicitar acesso.",
+        "Sua solicitação expirou. " +
+        "Clique novamente em Solicitar acesso.",
       embeds: [],
       components: []
     });
@@ -720,20 +847,25 @@ async function handleAccessRank(interaction) {
   let requestId;
 
   if (existingRequest) {
-    if (existingRequest.status === "pending") {
+    if (
+      existingRequest.status === "pending"
+    ) {
       pendingAccessForms.delete(
         interaction.user.id
       );
 
       return interaction.update({
         content:
-          "Você já possui uma solicitação aguardando análise.",
+          "Você já possui uma solicitação " +
+          "aguardando análise.",
         embeds: [],
         components: []
       });
     }
 
-    if (existingRequest.status === "approved") {
+    if (
+      existingRequest.status === "approved"
+    ) {
       pendingAccessForms.delete(
         interaction.user.id
       );
@@ -810,7 +942,8 @@ async function handleAccessRank(interaction) {
   const embed = new EmbedBuilder()
     .setTitle("Nova solicitação")
     .setDescription(
-      "Um novo usuário solicitou acesso ao matchmaking."
+      "Um novo usuário solicitou " +
+      "acesso ao matchmaking."
     )
     .addFields(
       {
@@ -872,7 +1005,8 @@ async function handleAccessRank(interaction) {
 
   return interaction.update({
     content:
-      "Sua solicitação foi enviada. Aguarde a análise da Staff.",
+      "Sua solicitação foi enviada. " +
+      "Aguarde a análise da Staff.",
     embeds: [],
     components: []
   });
