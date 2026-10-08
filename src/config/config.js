@@ -1,3 +1,4 @@
+
 require("dotenv").config();
 
 const requiredVariables = [
@@ -26,14 +27,9 @@ for (const variable of requiredVariables) {
 
 module.exports = {
   discord: {
-    token:
-      process.env.DISCORD_TOKEN,
-
-    clientId:
-      process.env.CLIENT_ID,
-
-    guildId:
-      process.env.GUILD_ID,
+    token: process.env.DISCORD_TOKEN,
+    clientId: process.env.CLIENT_ID,
+    guildId: process.env.GUILD_ID,
 
     accessChannelId:
       process.env.ACCESS_CHANNEL_ID,
@@ -68,16 +64,57 @@ module.exports = {
 
   matchmaking: {
     teamSize: 5,
-
     requiredPlayers: 10,
 
     winPoints: 5,
-
     lossPoints: -3,
 
     readyCheckSeconds: 60,
+    queueCooldownSeconds: 5,
 
-    queueCooldownSeconds: 5
+    draftPickSeconds: 45,
+    mapVetoSeconds: 30,
+
+    timerCheckIntervalMs: 1000,
+
+    autoPickOnTimeout: true,
+    autoBanOnTimeout: true
+  },
+
+  penalties: {
+    enabled: true,
+
+    readyCheckCooldownMinutes: 5,
+
+    progressive: true,
+
+    cooldownLevelsMinutes: [
+      5,
+      15,
+      30
+    ],
+
+    escalationWindowHours: 24
+  },
+
+  recovery: {
+    enabled: true,
+
+    restoreQueue: true,
+    restoreReadyCheck: true,
+    restoreCaptainVote: true,
+    restoreDraft: true,
+    restoreMapVeto: true,
+    restoreSideChoice: true,
+
+    reconcileExpiredTimers: true,
+
+    logRecovery: true
+  },
+
+  staff: {
+    reportsEnabled: true,
+    auditLogsEnabled: true
   },
 
   seasons: {
