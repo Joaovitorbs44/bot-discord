@@ -5,6 +5,8 @@ const {
   TextDisplayBuilder,
   SeparatorBuilder,
   SeparatorSpacingSize,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
   ActionRowBuilder,
   StringSelectMenuBuilder,
   ButtonBuilder,
@@ -53,6 +55,10 @@ const TEAM_B = [
   PLAYERS[9]
 ];
 
+// ==========================================
+// MAPAS
+// ==========================================
+
 const MAPS = [
   "Bank",
   "Border",
@@ -64,6 +70,67 @@ const MAPS = [
   "Nighthaven Labs",
   "Fortress"
 ];
+
+// ==========================================
+// IMAGENS UBISOFT
+// ==========================================
+
+const MAP_IMAGE_URLS = {
+  Bank:
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/4mjO2UYo1gqwhess6Mi5gb/a08a0b4886d73742e4d60315b9f21106/R6S_Maps_Bank_INT.jpg",
+
+  Border:
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/5vsJsf9T6r7aFBLJX8dJOG/dafc156a04d0a488768bb67f4571ee9e/R6S_Maps_Border_INT.jpg",
+
+  Chalet:
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/4M17EQjgQCJOy2NpZM08OT/36c6b2db0da388d851a5c518335c9145/R6S_Maps_Chalet_INT.jpg",
+
+  Clubhouse:
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/2ljlmbIAzZyVPSxOIcnlBn/da345d768d59f205b55ebae07c9f5ab1/R6S_Maps_Clubhouse_INT.jpg",
+
+  Villa:
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/6unM0FYNkxPsr7BSiKLPR5/1a3e9cf2565be709e993a809457e595a/r6s-maps-villa-main.jpg",
+
+  "Kafe Dostoyevsky":
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/2fFapm8NXcr8tVPK5wKvAw/7badc6f2631b4954e11acb087b5cf24d/R6S_Maps_RussianCafe_INT.jpg",
+
+  Lair:
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/2bKyUztyfsi7HfL9RGtPb9/b34c837688b2b4db51ce1e97520d61ef/ModernizedMap_Lair_keyart.jpg",
+
+  "Nighthaven Labs":
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/2gMeZHxuUrUzHTTBdxqGJJ/3bb639dc291983d825cbde80c15efbad/ModernizedMap_Nighthaven_keyart.jpg",
+
+  Fortress:
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/4WTHlSiKQwN09UHrKTSxo8/579a9b6411b879591f9a01124a0bae99/fortress-reworked-keyart.jpg"
+};
+
+// ==========================================
+// ESTADO FICTÍCIO DO VETO
+// ==========================================
+
+const PREVIEW_BANNED_MAPS = [
+  {
+    map: "Bank",
+    team: "A",
+    captain: "player01"
+  },
+  {
+    map: "Border",
+    team: "B",
+    captain: "player02"
+  }
+];
+
+const PREVIEW_AVAILABLE_MAPS = MAPS.filter(
+  map =>
+    !PREVIEW_BANNED_MAPS.some(
+      banned => banned.map === map
+    )
+);
+
+// ==========================================
+// PAINÉIS DISPONÍVEIS
+// ==========================================
 
 const PANELS = [
   { label: "Fila", value: "queue", emoji: "🎮" },
@@ -82,7 +149,9 @@ const PANELS = [
 // ==========================================
 
 function isStaff(interaction) {
-  const roleId = config.discord?.staffRoleId;
+  const roleId =
+    config.discord?.staffRoleId ||
+    process.env.STAFF_ROLE_ID;
 
   const hasRole = Boolean(
     roleId &&
@@ -108,16 +177,19 @@ function isStaff(interaction) {
 // ==========================================
 
 function separator(container) {
-  return container.addSeparatorComponents(
+  container.addSeparatorComponents(
     new SeparatorBuilder()
       .setDivider(true)
       .setSpacing(SeparatorSpacingSize.Small)
   );
+
+  return container;
 }
 
-function addText(container, text) {
+function addText(container, content) {
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(text)
+    new TextDisplayBuilder()
+      .setContent(content)
   );
 
   return container;
@@ -151,7 +223,12 @@ function createContainer(title, subtitle) {
   return container;
 }
 
-function createButton(id, label, emoji, style) {
+function createButton(
+  id,
+  label,
+  emoji,
+  style
+) {
   return new ButtonBuilder()
     .setCustomId(`preview_demo_${id}`)
     .setLabel(label)
@@ -166,11 +243,140 @@ function buttonRow(...buttons) {
 }
 
 // ==========================================
-// PAINÉIS
+// GALERIA DE MAPAS
+// ==========================================
+
+function createMapGallery(maps) {
+  const gallery = new MediaGalleryBuilder();
+
+  let added = 0;
+
+  for (const map of maps) {
+    const url = MAP_IMAGE_URLS[map];
+
+    if (!url) {
+      continue;
+    }
+
+    const banned =
+      PREVIEW_BANNED_MAPS.some(
+        item => item.map === map
+      );
+
+    const status = banned
+      ? "BANIDO"
+      : "DISPONÍVEL";
+
+    gallery.addItems(
+      new MediaGalleryItemBuilder()
+        .setURL(url)
+        .setDescription(
+          `${map} · ${status}`
+        )
+    );
+
+    added++;
+  }
+
+  return added > 0 ? gallery : null;
+}
+
+// ==========================================
+// PAINEL DE VETO COM IMAGENS
+// ==========================================
+
+function buildMapPanel() {
+  const container = createContainer(
+    "VETO DE MAPAS",
+    "PICK & BAN · MELHOR DE 1"
+  );
+
+  addText(
+    container,
+    "**Rodada:** 3/8\n" +
+    "**Vez de banir:** player01 · Time A\n" +
+    "**Tempo restante:** 30 segundos\n" +
+    `**Mapas disponíveis:** ${PREVIEW_AVAILABLE_MAPS.length}`
+  );
+
+  separator(container);
+
+  addText(
+    container,
+    "### MAP POOL\n" +
+    "-# Imagens dos nove mapas da partida"
+  );
+
+  const gallery = createMapGallery(MAPS);
+
+  if (gallery) {
+    container.addMediaGalleryComponents(
+      gallery
+    );
+  }
+
+  separator(container);
+
+  addText(
+    container,
+    "### MAPAS DISPONÍVEIS\n" +
+    PREVIEW_AVAILABLE_MAPS.map(
+      map => `🟢 ${map}`
+    ).join("\n")
+  );
+
+  separator(container);
+
+  addText(
+    container,
+    "### HISTÓRICO DE BANIMENTOS\n" +
+    PREVIEW_BANNED_MAPS.map(
+      (item, index) =>
+        `**${index + 1}.** ❌ ${item.map} · ` +
+        `Time ${item.team}`
+    ).join("\n")
+  );
+
+  separator(container);
+
+  addText(
+    container,
+    "-# Demonstração visual. Nenhum mapa " +
+    "será banido de verdade."
+  );
+
+  const mapSelect =
+    new StringSelectMenuBuilder()
+      .setCustomId("preview_demo_map")
+      .setPlaceholder(
+        "Escolha um mapa para banir"
+      )
+      .setDisabled(true)
+      .addOptions(
+        PREVIEW_AVAILABLE_MAPS.map(
+          map => ({
+            label: map,
+            value: map
+          })
+        )
+      );
+
+  return {
+    container,
+    components: [
+      new ActionRowBuilder()
+        .addComponents(mapSelect)
+    ]
+  };
+}
+
+// ==========================================
+// CONSTRUIR PAINÉIS
 // ==========================================
 
 function buildPanel(type) {
   let container;
+
   const components = [];
 
   switch (type) {
@@ -232,9 +438,10 @@ function buildPanel(type) {
 
       addText(
         container,
-        PLAYERS.map((player, index) =>
-          `${index < 7 ? "✅" : "⏳"} ` +
-          player.nickname
+        PLAYERS.map(
+          (player, index) =>
+            `${index < 7 ? "✅" : "⏳"} ` +
+            player.nickname
         ).join("\n")
       );
 
@@ -268,25 +475,31 @@ function buildPanel(type) {
 
       addText(
         container,
-        PLAYERS.map((player, index) =>
-          `• ${player.nickname} · ` +
-          `${index < 6 ? "Votou" : "Pendente"}`
+        PLAYERS.map(
+          (player, index) =>
+            `• ${player.nickname} · ` +
+            (index < 6 ? "Votou" : "Pendente")
         ).join("\n")
       );
 
       components.push(
-        new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId("preview_demo_captain")
-            .setPlaceholder("Escolha um capitão")
-            .setDisabled(true)
-            .addOptions(
-              PLAYERS.map(player => ({
-                label: player.nickname,
-                value: player.id
-              }))
-            )
-        )
+        new ActionRowBuilder()
+          .addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId(
+                "preview_demo_captain"
+              )
+              .setPlaceholder(
+                "Escolha um capitão"
+              )
+              .setDisabled(true)
+              .addOptions(
+                PLAYERS.map(player => ({
+                  label: player.nickname,
+                  value: player.id
+                }))
+              )
+          )
       );
 
       break;
@@ -332,8 +545,11 @@ function buildPanel(type) {
 
       const available = PLAYERS.filter(
         player =>
-          !["player01", "player02", "player03"]
-            .includes(player.id)
+          ![
+            "player01",
+            "player02",
+            "player03"
+          ].includes(player.id)
       );
 
       addText(
@@ -343,71 +559,38 @@ function buildPanel(type) {
       );
 
       components.push(
-        new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId("preview_demo_draft")
-            .setPlaceholder("Escolha 2 jogadores")
-            .setMinValues(2)
-            .setMaxValues(2)
-            .setDisabled(true)
-            .addOptions(
-              available.map(player => ({
-                label: player.nickname,
-                description: player.rank,
-                value: player.id
-              }))
-            )
-        )
+        new ActionRowBuilder()
+          .addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId(
+                "preview_demo_draft"
+              )
+              .setPlaceholder(
+                "Escolha 2 jogadores"
+              )
+              .setMinValues(2)
+              .setMaxValues(2)
+              .setDisabled(true)
+              .addOptions(
+                available.map(player => ({
+                  label: player.nickname,
+                  description: player.rank,
+                  value: player.id
+                }))
+              )
+          )
       );
 
       break;
     }
 
     case "maps": {
-      container = createContainer(
-        "VETO DE MAPAS",
-        "PICK & BAN · 9 MAPAS"
-      );
+      const mapPanel = buildMapPanel();
 
-      addText(
-        container,
-        "**Vez:** player01 · Time A\n" +
-        "**Tempo:** 30 segundos\n" +
-        "**Mapas restantes:** 7"
-      );
-
-      separator(container);
-
-      addText(
-        container,
-        "### MAPAS DISPONÍVEIS\n" +
-        MAPS.slice(2).map(map =>
-          `• ${map}`
-        ).join("\n")
-      );
-
-      separator(container);
-
-      addText(
-        container,
-        "### BANIMENTOS\n" +
-        "❌ Bank · Time A\n" +
-        "❌ Border · Time B"
-      );
+      container = mapPanel.container;
 
       components.push(
-        new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId("preview_demo_map")
-            .setPlaceholder("Escolha um mapa para banir")
-            .setDisabled(true)
-            .addOptions(
-              MAPS.slice(2).map(map => ({
-                label: map,
-                value: map
-              }))
-            )
-        )
+        ...mapPanel.components
       );
 
       break;
@@ -579,7 +762,9 @@ function buildPanel(type) {
     }
 
     default:
-      throw new Error("INVALID_PREVIEW_PANEL");
+      throw new Error(
+        "INVALID_PREVIEW_PANEL"
+      );
   }
 
   return {
@@ -590,7 +775,9 @@ function buildPanel(type) {
     flags:
       MessageFlags.IsComponentsV2 |
       MessageFlags.Ephemeral,
-    allowedMentions: { parse: [] }
+    allowedMentions: {
+      parse: []
+    }
   };
 }
 
@@ -599,21 +786,26 @@ function buildPanel(type) {
 // ==========================================
 
 function createNavigation() {
-  return new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId("preview_select")
-      .setPlaceholder("Escolha o painel para visualizar")
-      .addOptions(
-        PANELS.map(panel => ({
-          label: panel.label,
-          value: panel.value,
-          emoji: panel.emoji
-        }))
-      )
-  );
+  return new ActionRowBuilder()
+    .addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId("preview_select")
+        .setPlaceholder(
+          "Escolha o painel para visualizar"
+        )
+        .addOptions(
+          PANELS.map(panel => ({
+            label: panel.label,
+            value: panel.value,
+            emoji: panel.emoji
+          }))
+        )
+    );
 }
 
-function createPreviewMessage(type = "queue") {
+function createPreviewMessage(
+  type = "queue"
+) {
   const panel = buildPanel(type);
 
   return {
@@ -657,14 +849,19 @@ async function executePreview(interaction) {
 async function handlePreviewSelect(interaction) {
   if (!isStaff(interaction)) {
     return interaction.reply({
-      content: "Acesso restrito à Staff.",
+      content:
+        "Acesso restrito à Staff.",
       flags: MessageFlags.Ephemeral
     });
   }
 
   const type = interaction.values?.[0];
 
-  if (!PANELS.some(panel => panel.value === type)) {
+  if (
+    !PANELS.some(
+      panel => panel.value === type
+    )
+  ) {
     return interaction.reply({
       content: "Painel inválido.",
       flags: MessageFlags.Ephemeral
