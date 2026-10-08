@@ -1,4 +1,3 @@
-
 const {
   Client,
   GatewayIntentBits,
@@ -10,119 +9,77 @@ const {
   StringSelectMenuBuilder
 } = require("discord.js");
 
-const config = require(
-  "../config/config"
-);
-
-const initializeDatabase = require(
-  "../database/schema"
-);
-
-const db = require(
-  "../database/database"
-);
+const config = require("../config/config");
+const initializeDatabase = require("../database/schema");
+const db = require("../database/database");
 
 // ==========================================
 // SCRIPTS
 // ==========================================
 
-const handleAccess = require(
-  "../scripts/access"
-);
-
-const handleApprove = require(
-  "../scripts/approve"
-);
-
-const handleReject = require(
-  "../scripts/reject"
-);
-
-const handleProfile = require(
-  "../scripts/profile"
-);
-
-const handleRanking = require(
-  "../scripts/ranking"
-);
-
-const handleSolicitacoes = require(
-  "../scripts/solicitacoes"
-);
+const handleAccess = require("../scripts/access");
+const handleApprove = require("../scripts/approve");
+const handleReject = require("../scripts/reject");
+const handleProfile = require("../scripts/profile");
+const handleRanking = require("../scripts/ranking");
+const handleSolicitacoes = require("../scripts/solicitacoes");
 
 const {
   handleClearQueueCommand,
   handleClearQueueConfirm,
   handleClearQueueCancel
-} = require(
-  "../scripts/clearQueue"
-);
+} = require("../scripts/clearQueue");
 
 const {
   handleRemoveQueueCommand
-} = require(
-  "../scripts/removeQueue"
-);
+} = require("../scripts/removeQueue");
 
 const {
   handleHistory,
   handleMatchLookup
-} = require(
-  "../scripts/history"
-);
+} = require("../scripts/history");
 
-const seasonModule = require(
-  "../scripts/season"
-);
+const seasonModule = require("../scripts/season");
 
 const handleSeason =
-  seasonModule.handleSeason ||
-  seasonModule;
+  seasonModule.handleSeason || seasonModule;
 
 const handleSeasons =
-  seasonModule.handleSeasons ||
-  null;
+  seasonModule.handleSeasons || null;
 
 // ==========================================
 // MATCHMAKING
 // ==========================================
 
+const queueState = require("../scripts/queueState");
+
 const {
   handleQueue,
-  restoreQueuePanel
-} = require(
-  "../scripts/queue"
-);
+  restoreQueuePanel,
+  updateQueuePanel
+} = require("../scripts/queue");
 
 const {
   handleReadyCheck
-} = require(
-  "../scripts/ready"
-);
+} = require("../scripts/ready");
 
 const {
   handleCaptainVote
-} = require(
-  "../scripts/captains"
-);
+} = require("../scripts/captains");
 
 const {
-  handleDraftPick
-} = require(
-  "../scripts/drafts"
-);
+  handleDraftPick,
+  restoreDraft
+} = require("../scripts/drafts");
 
 const {
-  handleMapVeto
-} = require(
-  "../scripts/mapVeto"
-);
+  handleMapVeto,
+  restoreMapVeto
+} = require("../scripts/mapVeto");
 
 const {
   handleSideChoice
-} = require(
-  "../scripts/side"
-);
+} = require("../scripts/side");
 
 // ==========================================
 // RESULTADOS
@@ -135,9 +92,7 @@ const {
   handleResultDispute,
   handleStaffResult,
   handleStaffCancel
-} = require(
-  "../scripts/results"
-);
+} = require("../scripts/results");
 
 // ==========================================
 // BANCO DE DADOS
@@ -149,8 +104,10 @@ initializeDatabase();
 // SOLICITAÇÕES TEMPORÁRIAS
 // ==========================================
 
-const pendingAccessForms =
-  new Map();
+const pendingAccessForms = new Map();
+
+const ACCESS_FORM_TIMEOUT_MS =
+  15 * 60 * 1000;
 
 // ==========================================
 // RANKS R6
@@ -179,68 +136,291 @@ const client = new Client({
 });
 
 // ==========================================
-// INICIALIZAÇÃO DO MATCHMAKING
+// CONTROLE DE INICIALIZAÇÃO
 // ==========================================
 
-async function initializeMatchmaking(
-  readyClient
-) {
+let matchmakingInitialized = false;
+let matchmakingInitializing = false;
+
+// ==========================================
+// RECUPERAÇÃO DO MATCHMAKING
+// ==========================================
+
+async function initializeMatchmaking(readyClient) {
+  if (
+    matchmakingInitialized ||
+    matchmakingInitializing
+  ) {
+    return;
+  }
+
+  matchmakingInitializing = true;
+
   console.log(
-    "Inicializando matchmaking..."
+    "Inicializando matchmaking persistente..."
   );
 
-  /*
-   * ETAPA ATUAL:
-   *
-   * Recupera o painel da fila,
-   * preservando o comportamento
-   * já existente.
-   *
-   * A recuperação persistente
-   * de jogadores e etapas será
-   * integrada posteriormente.
-   */
-
   try {
-    const queueMessage =
-      await restoreQueuePanel(
-        readyClient
-      );
+    // ======================================
+    // 1. RECUPERAR JOGADORES
+    // ======================================
+
+    const restored = queueState.restoreQueueState();
+
+    console.log(
+      `Jogadores recuperados: ${restored.restored}`
+    );
+
+    console.log(
+      `Etapa recuperada: ${restored.stage}`
+    );
+
+    // ======================================
+    // 2. RECUPERAR PAINEL
+    // ======================================
+
+    /*
+     * IMPORTANTE:
+     *
+     * restoreQueuePanel() precisa estar
+     * atualizado para NÃO chamar:
+     *
+     * queueState.clearQueue()
+     * queueState.unlockQueue()
+     *
+     * Essa correção será feita em queue.js.
+     */
+
+    const queueMessage = await restoreQueuePanel(
+      readyClient
+    );
 
     if (queueMessage) {
       console.log(
-        "Painel da fila restaurado e sincronizado."
+        `Painel da fila localizado: ${queueMessage.id}`
       );
     } else {
       console.warn(
-        "Não foi possível restaurar o painel da fila."
+        "Painel da fila não foi localizado."
       );
     }
+
+    // ======================================
+    // 3. RECUPERAR ETAPA ATIVA
+    // ======================================
+
+    const session = queueState.getActiveSession();
+
+    if (!session) {
+      console.log(
+        "Nenhuma sessão ativa para recuperar."
+      );
+
+      matchmakingInitialized = true;
+      return;
+    }
+
+    switch (session.stage) {
+      // ====================================
+      // FILA
+      // ====================================
+
+      case "queue": {
+        console.log(
+          "Sessão restaurada na fila."
+        );
+
+        break;
+      }
+
+      // ====================================
+      // READY CHECK
+      // ====================================
+
+      case "ready_check": {
+        console.warn(
+          "Ready Check persistido encontrado."
+        );
+
+        console.warn(
+          "A recuperação do Ready Check será integrada em ready.js."
+        );
+
+        /*
+         * Mantemos a sessão bloqueada.
+         *
+         * Não removemos jogadores e
+         * não reiniciamos a fila.
+         */
+
+        break;
+      }
+
+      // ====================================
+      // VOTAÇÃO DE CAPITÃES
+      // ====================================
+
+      case "captain_vote": {
+        console.warn(
+          "Votação de capitães persistida encontrada."
+        );
+
+        console.warn(
+          "A recuperação da votação será integrada em captains.js."
+        );
+
+        break;
+      }
+
+      // ====================================
+      // DRAFT
+      // ====================================
+
+      case "draft": {
+        console.log(
+          "Recuperando draft..."
+        );
+
+        if (typeof restoreDraft !== "function") {
+          console.warn(
+            "restoreDraft() não está disponível."
+          );
+
+          break;
+        }
+
+        try {
+          const success = await restoreDraft(
+            readyClient
+          );
+
+          console.log(
+            success
+              ? "Draft recuperado."
+              : "Não foi possível recuperar o draft."
+          );
+        } catch (error) {
+          console.error(
+            "Erro ao recuperar draft:",
+            error
+          );
+        }
+
+        break;
+      }
+
+      // ====================================
+      // VETO DE MAPAS
+      // ====================================
+
+      case "map_veto": {
+        console.log(
+          "Recuperando veto de mapas..."
+        );
+
+        if (typeof restoreMapVeto !== "function") {
+          console.warn(
+            "restoreMapVeto() não está disponível."
+          );
+
+          break;
+        }
+
+        try {
+          const success = await restoreMapVeto(
+            readyClient
+          );
+
+          console.log(
+            success
+              ? "Veto de mapas recuperado."
+              : "Não foi possível recuperar o veto."
+          );
+        } catch (error) {
+          console.error(
+            "Erro ao recuperar veto:",
+            error
+          );
+        }
+
+        break;
+      }
+
+      // ====================================
+      // ESCOLHA DE LADO
+      // ====================================
+
+      case "side_choice": {
+        console.warn(
+          "Escolha de lado persistida encontrada."
+        );
+
+        console.warn(
+          "A recuperação será integrada em side.js."
+        );
+
+        break;
+      }
+
+      // ====================================
+      // PARTIDA CRIADA
+      // ====================================
+
+      case "playing": {
+        console.log(
+          "Sessão de partida em andamento encontrada."
+        );
+
+        /*
+         * As partidas já são registradas
+         * na tabela matches.
+         *
+         * A reconciliação dessa etapa
+         * será feita posteriormente.
+         */
+
+        break;
+      }
+
+      // ====================================
+      // ETAPA DESCONHECIDA
+      // ====================================
+
+      default: {
+        console.warn(
+          `Etapa não reconhecida: ${session.stage}`
+        );
+
+        break;
+      }
+    }
+
+    // ======================================
+    // 4. SINCRONIZAR PAINEL
+    // ======================================
+
+    try {
+      await updateQueuePanel();
+    } catch (error) {
+      console.error(
+        "Erro ao sincronizar painel da fila:",
+        error
+      );
+    }
+
+    matchmakingInitialized = true;
+
+    console.log(
+      "Inicialização do matchmaking concluída."
+    );
   } catch (error) {
     console.error(
-      "Erro ao restaurar o painel da fila:",
+      "Falha na inicialização do matchmaking:",
       error
     );
+  } finally {
+    matchmakingInitializing = false;
   }
-
-  /*
-   * FUTURA INTEGRAÇÃO:
-   *
-   * recoveryService:
-   * - recuperar jogadores da fila
-   * - recuperar Ready Check
-   * - recuperar votação
-   * - recuperar draft
-   * - recuperar veto
-   * - recuperar escolha de lado
-   * - reconciliar prazos expirados
-   *
-   * Ainda não é executada.
-   */
-
-  console.log(
-    "Inicialização do matchmaking concluída."
-  );
 }
 
 // ==========================================
@@ -274,12 +454,9 @@ client.on(
 
       if (
         interaction.isButton() &&
-        interaction.customId ===
-          "access_request"
+        interaction.customId === "access_request"
       ) {
-        return handleAccess(
-          interaction
-        );
+        return handleAccess(interaction);
       }
 
       // ======================================
@@ -288,12 +465,9 @@ client.on(
 
       if (
         interaction.isModalSubmit() &&
-        interaction.customId ===
-          "access_modal"
+        interaction.customId === "access_modal"
       ) {
-        return handleAccessModal(
-          interaction
-        );
+        return handleAccessModal(interaction);
       }
 
       // ======================================
@@ -302,16 +476,13 @@ client.on(
 
       if (
         interaction.isStringSelectMenu() &&
-        interaction.customId ===
-          "access_rank"
+        interaction.customId === "access_rank"
       ) {
-        return handleAccessRank(
-          interaction
-        );
+        return handleAccessRank(interaction);
       }
 
       // ======================================
-      // APROVAR
+      // APROVAR ACESSO
       // ======================================
 
       if (
@@ -320,13 +491,11 @@ client.on(
           "access_approve:"
         )
       ) {
-        return handleApprove(
-          interaction
-        );
+        return handleApprove(interaction);
       }
 
       // ======================================
-      // REJEITAR
+      // REJEITAR ACESSO
       // ======================================
 
       if (
@@ -335,9 +504,7 @@ client.on(
           "access_reject:"
         )
       ) {
-        return handleReject(
-          interaction
-        );
+        return handleReject(interaction);
       }
 
       // ======================================
@@ -347,19 +514,23 @@ client.on(
       if (
         interaction.isButton() &&
         (
-          interaction.customId ===
-            "queue_join" ||
-          interaction.customId ===
-            "queue_leave"
+          interaction.customId === "queue_join" ||
+          interaction.customId === "queue_leave"
         )
       ) {
-        return handleQueue(
-          interaction
-        );
+        if (!matchmakingInitialized) {
+          return interaction.reply({
+            content:
+              "O matchmaking está inicializando. Tente novamente em instantes.",
+            ephemeral: true
+          });
+        }
+
+        return handleQueue(interaction);
       }
 
       // ======================================
-      // LIMPAR FILA
+      // LIMPAR FILA - CONFIRMAR
       // ======================================
 
       if (
@@ -371,6 +542,10 @@ client.on(
           interaction
         );
       }
+
+      // ======================================
+      // LIMPAR FILA - CANCELAR
+      // ======================================
 
       if (
         interaction.isButton() &&
@@ -388,12 +563,9 @@ client.on(
 
       if (
         interaction.isButton() &&
-        interaction.customId ===
-          "ready_confirm"
+        interaction.customId === "ready_confirm"
       ) {
-        return handleReadyCheck(
-          interaction
-        );
+        return handleReadyCheck(interaction);
       }
 
       // ======================================
@@ -402,12 +574,9 @@ client.on(
 
       if (
         interaction.isStringSelectMenu() &&
-        interaction.customId ===
-          "captain_vote"
+        interaction.customId === "captain_vote"
       ) {
-        return handleCaptainVote(
-          interaction
-        );
+        return handleCaptainVote(interaction);
       }
 
       // ======================================
@@ -416,26 +585,20 @@ client.on(
 
       if (
         interaction.isStringSelectMenu() &&
-        interaction.customId ===
-          "draft_pick"
+        interaction.customId === "draft_pick"
       ) {
-        return handleDraftPick(
-          interaction
-        );
+        return handleDraftPick(interaction);
       }
 
       // ======================================
-      // MAP VETO
+      // VETO DE MAPAS
       // ======================================
 
       if (
         interaction.isStringSelectMenu() &&
-        interaction.customId ===
-          "map_veto"
+        interaction.customId === "map_veto"
       ) {
-        return handleMapVeto(
-          interaction
-        );
+        return handleMapVeto(interaction);
       }
 
       // ======================================
@@ -445,19 +608,15 @@ client.on(
       if (
         interaction.isButton() &&
         (
-          interaction.customId ===
-            "side_attack" ||
-          interaction.customId ===
-            "side_defense"
+          interaction.customId === "side_attack" ||
+          interaction.customId === "side_defense"
         )
       ) {
-        return handleSideChoice(
-          interaction
-        );
+        return handleSideChoice(interaction);
       }
 
       // ======================================
-      // RESULTADOS
+      // INFORMAR RESULTADO
       // ======================================
 
       if (
@@ -466,10 +625,12 @@ client.on(
           "result_report:"
         )
       ) {
-        return handleResultReport(
-          interaction
-        );
+        return handleResultReport(interaction);
       }
+
+      // ======================================
+      // SELECIONAR VENCEDOR
+      // ======================================
 
       if (
         interaction.isButton() &&
@@ -477,10 +638,12 @@ client.on(
           "result_winner:"
         )
       ) {
-        return handleWinnerSelection(
-          interaction
-        );
+        return handleWinnerSelection(interaction);
       }
+
+      // ======================================
+      // CONFIRMAR RESULTADO
+      // ======================================
 
       if (
         interaction.isButton() &&
@@ -493,6 +656,10 @@ client.on(
         );
       }
 
+      // ======================================
+      // CONTESTAR RESULTADO
+      // ======================================
+
       if (
         interaction.isButton() &&
         interaction.customId.startsWith(
@@ -504,16 +671,22 @@ client.on(
         );
       }
 
+      // ======================================
+      // STAFF DEFINE RESULTADO
+      // ======================================
+
       if (
         interaction.isButton() &&
         interaction.customId.startsWith(
           "staff_result:"
         )
       ) {
-        return handleStaffResult(
-          interaction
-        );
+        return handleStaffResult(interaction);
       }
+
+      // ======================================
+      // STAFF CANCELA PARTIDA
+      // ======================================
 
       if (
         interaction.isButton() &&
@@ -521,46 +694,29 @@ client.on(
           "staff_cancel:"
         )
       ) {
-        return handleStaffCancel(
-          interaction
-        );
+        return handleStaffCancel(interaction);
       }
 
       // ======================================
       // COMANDOS
       // ======================================
 
-      if (
-        interaction.isChatInputCommand()
-      ) {
-        switch (
-          interaction.commandName
-        ) {
+      if (interaction.isChatInputCommand()) {
+        switch (interaction.commandName) {
           case "perfil":
-            return handleProfile(
-              interaction
-            );
+            return handleProfile(interaction);
 
           case "ranking":
-            return handleRanking(
-              interaction
-            );
+            return handleRanking(interaction);
 
           case "historico":
-            return handleHistory(
-              interaction
-            );
+            return handleHistory(interaction);
 
           case "partida":
-            return handleMatchLookup(
-              interaction
-            );
+            return handleMatchLookup(interaction);
 
           case "temporada":
-            if (
-              typeof handleSeason !==
-              "function"
-            ) {
+            if (typeof handleSeason !== "function") {
               return interaction.reply({
                 content:
                   "O comando de temporada ainda não está configurado.",
@@ -568,15 +724,10 @@ client.on(
               });
             }
 
-            return handleSeason(
-              interaction
-            );
+            return handleSeason(interaction);
 
           case "temporadas":
-            if (
-              typeof handleSeasons !==
-              "function"
-            ) {
+            if (typeof handleSeasons !== "function") {
               return interaction.reply({
                 content:
                   "O histórico de temporadas ainda não está configurado.",
@@ -584,14 +735,10 @@ client.on(
               });
             }
 
-            return handleSeasons(
-              interaction
-            );
+            return handleSeasons(interaction);
 
           case "solicitacoes":
-            return handleSolicitacoes(
-              interaction
-            );
+            return handleSolicitacoes(interaction);
 
           case "remover-fila":
             return handleRemoveQueueCommand(
@@ -646,22 +793,16 @@ client.on(
 // MODAL DE SOLICITAÇÃO
 // ==========================================
 
-async function handleAccessModal(
-  interaction
-) {
-  const existingRequest =
-    db.prepare(`
-      SELECT *
-      FROM access_requests
-      WHERE discord_id = ?
-    `).get(
-      interaction.user.id
-    );
+async function handleAccessModal(interaction) {
+  const existingRequest = db.prepare(`
+    SELECT *
+    FROM access_requests
+    WHERE discord_id = ?
+  `).get(interaction.user.id);
 
   if (
     existingRequest &&
-    existingRequest.status ===
-      "pending"
+    existingRequest.status === "pending"
   ) {
     return interaction.reply({
       content:
@@ -672,8 +813,7 @@ async function handleAccessModal(
 
   if (
     existingRequest &&
-    existingRequest.status ===
-      "approved"
+    existingRequest.status === "approved"
   ) {
     return interaction.reply({
       content:
@@ -682,30 +822,18 @@ async function handleAccessModal(
     });
   }
 
-  const name =
-    interaction.fields
-      .getTextInputValue(
-        "name"
-      )
-      .trim();
+  const name = interaction.fields
+    .getTextInputValue("name")
+    .trim();
 
-  const twitchNickname =
-    interaction.fields
-      .getTextInputValue(
-        "twitch_nickname"
-      )
-      .trim()
-      .replace(
-        /^@/,
-        ""
-      );
+  const twitchNickname = interaction.fields
+    .getTextInputValue("twitch_nickname")
+    .trim()
+    .replace(/^@/, "");
 
-  const r6Nickname =
-    interaction.fields
-      .getTextInputValue(
-        "r6_nickname"
-      )
-      .trim();
+  const r6Nickname = interaction.fields
+    .getTextInputValue("r6_nickname")
+    .trim();
 
   if (
     !name ||
@@ -725,36 +853,27 @@ async function handleAccessModal(
       name,
       twitchNickname,
       r6Nickname,
-      createdAt:
-        Date.now()
+      createdAt: Date.now()
     }
   );
 
   const rankSelect =
     new StringSelectMenuBuilder()
-      .setCustomId(
-        "access_rank"
-      )
+      .setCustomId("access_rank")
       .setPlaceholder(
         "Selecione seu rank atual"
       )
       .setMinValues(1)
       .setMaxValues(1)
-      .addOptions(
-        R6_RANKS
-      );
+      .addOptions(R6_RANKS);
 
   const row =
     new ActionRowBuilder()
-      .addComponents(
-        rankSelect
-      );
+      .addComponents(rankSelect);
 
   const embed =
     new EmbedBuilder()
-      .setTitle(
-        "Selecione seu rank"
-      )
+      .setTitle("Selecione seu rank")
       .setDescription(
         "Agora selecione seu rank atual no Rainbow Six Siege."
       )
@@ -766,15 +885,12 @@ async function handleAccessModal(
         },
         {
           name: "Twitch",
-          value:
-            `@${twitchNickname}`,
+          value: `@${twitchNickname}`,
           inline: true
         },
         {
-          name:
-            "Nickname R6",
-          value:
-            r6Nickname,
+          name: "Nickname R6",
+          value: r6Nickname,
           inline: true
         }
       );
@@ -790,56 +906,51 @@ async function handleAccessModal(
 // SELECIONAR RANK
 // ==========================================
 
-async function handleAccessRank(
-  interaction
-) {
-  const form =
-    pendingAccessForms.get(
+async function handleAccessRank(interaction) {
+  const form = pendingAccessForms.get(
+    interaction.user.id
+  );
+
+  if (
+    !form ||
+    Date.now() - form.createdAt >
+      ACCESS_FORM_TIMEOUT_MS
+  ) {
+    pendingAccessForms.delete(
       interaction.user.id
     );
 
-  if (!form) {
-    return interaction.reply({
+    return interaction.update({
       content:
         "Sua solicitação expirou. Clique novamente em Solicitar acesso.",
-      ephemeral: true
+      embeds: [],
+      components: []
     });
   }
 
-  const r6Rank =
-    interaction.values[0];
+  const r6Rank = interaction.values[0];
 
-  const validRank =
-    R6_RANKS.some(
-      (rank) =>
-        rank.value ===
-        r6Rank
-    );
+  const validRank = R6_RANKS.some(
+    (rank) => rank.value === r6Rank
+  );
 
   if (!validRank) {
     return interaction.reply({
-      content:
-        "Rank inválido.",
+      content: "Rank inválido.",
       ephemeral: true
     });
   }
 
-  const existingRequest =
-    db.prepare(`
-      SELECT *
-      FROM access_requests
-      WHERE discord_id = ?
-    `).get(
-      interaction.user.id
-    );
+  const existingRequest = db.prepare(`
+    SELECT *
+    FROM access_requests
+    WHERE discord_id = ?
+  `).get(interaction.user.id);
 
   let requestId;
 
   if (existingRequest) {
-    if (
-      existingRequest.status ===
-        "pending"
-    ) {
+    if (existingRequest.status === "pending") {
       pendingAccessForms.delete(
         interaction.user.id
       );
@@ -852,10 +963,7 @@ async function handleAccessRank(
       });
     }
 
-    if (
-      existingRequest.status ===
-        "approved"
-    ) {
+    if (existingRequest.status === "approved") {
       pendingAccessForms.delete(
         interaction.user.id
       );
@@ -870,7 +978,6 @@ async function handleAccessRank(
 
     db.prepare(`
       UPDATE access_requests
-
       SET
         discord_username = ?,
         name = ?,
@@ -880,9 +987,7 @@ async function handleAccessRank(
         status = 'pending',
         reviewed_by = NULL,
         reviewed_at = NULL,
-        created_at =
-          CURRENT_TIMESTAMP
-
+        created_at = CURRENT_TIMESTAMP
       WHERE discord_id = ?
     `).run(
       interaction.user.username,
@@ -893,128 +998,98 @@ async function handleAccessRank(
       interaction.user.id
     );
 
-    requestId =
-      existingRequest.id;
+    requestId = existingRequest.id;
   } else {
-    const result =
-      db.prepare(`
-        INSERT INTO access_requests (
-          discord_id,
-          discord_username,
-          name,
-          twitch_nickname,
-          r6_nickname,
-          r6_rank
-        )
+    const result = db.prepare(`
+      INSERT INTO access_requests (
+        discord_id,
+        discord_username,
+        name,
+        twitch_nickname,
+        r6_nickname,
+        r6_rank
+      )
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      interaction.user.id,
+      interaction.user.username,
+      form.name,
+      form.twitchNickname,
+      form.r6Nickname,
+      r6Rank
+    );
 
-        VALUES (
-          ?,
-          ?,
-          ?,
-          ?,
-          ?,
-          ?
-        )
-      `).run(
-        interaction.user.id,
-        interaction.user.username,
-        form.name,
-        form.twitchNickname,
-        r6Nickname,
-        r6Rank
-      );
-
-    requestId =
-      result.lastInsertRowid;
+    requestId = result.lastInsertRowid;
   }
 
   const staffChannel =
-    await interaction.guild
-      .channels.fetch(
-        config.discord.staffChannelId
-      );
+    await interaction.guild.channels.fetch(
+      config.discord.staffChannelId
+    );
 
   if (
     !staffChannel ||
-    !staffChannel.isTextBased()
+    !staffChannel.isTextBased() ||
+    !staffChannel.send
   ) {
     throw new Error(
       "Canal da Staff não encontrado."
     );
   }
 
-  const embed =
-    new EmbedBuilder()
-      .setTitle(
-        "Nova solicitação"
-      )
-      .setDescription(
-        "Um novo usuário solicitou acesso ao matchmaking."
-      )
-      .addFields(
-        {
-          name: "Usuário",
-          value:
-            `<@${interaction.user.id}>`,
-          inline: false
-        },
-        {
-          name: "Nome",
-          value:
-            form.name,
-          inline: true
-        },
-        {
-          name: "Twitch",
-          value:
-            `@${form.twitchNickname}`,
-          inline: true
-        },
-        {
-          name:
-            "Nickname R6",
-          value:
-            form.r6Nickname,
-          inline: true
-        },
-        {
-          name: "Rank R6",
-          value:
-            r6Rank,
-          inline: true
-        }
-      )
-      .setFooter({
-        text:
-          `Solicitação #${requestId}`
-      })
-      .setTimestamp();
+  const embed = new EmbedBuilder()
+    .setTitle("Nova solicitação")
+    .setDescription(
+      "Um novo usuário solicitou acesso ao matchmaking."
+    )
+    .addFields(
+      {
+        name: "Usuário",
+        value: `<@${interaction.user.id}>`,
+        inline: false
+      },
+      {
+        name: "Nome",
+        value: form.name,
+        inline: true
+      },
+      {
+        name: "Twitch",
+        value: `@${form.twitchNickname}`,
+        inline: true
+      },
+      {
+        name: "Nickname R6",
+        value: form.r6Nickname,
+        inline: true
+      },
+      {
+        name: "Rank R6",
+        value: r6Rank,
+        inline: true
+      }
+    )
+    .setFooter({
+      text: `Solicitação #${requestId}`
+    })
+    .setTimestamp();
 
-  const buttons =
-    new ActionRowBuilder()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId(
-            `access_approve:${requestId}`
-          )
-          .setLabel(
-            "Aprovar"
-          )
-          .setStyle(
-            ButtonStyle.Success
-          ),
+  const buttons = new ActionRowBuilder()
+    .addComponents(
+      new ButtonBuilder()
+        .setCustomId(
+          `access_approve:${requestId}`
+        )
+        .setLabel("Aprovar")
+        .setStyle(ButtonStyle.Success),
 
-        new ButtonBuilder()
-          .setCustomId(
-            `access_reject:${requestId}`
-          )
-          .setLabel(
-            "Rejeitar"
-          )
-          .setStyle(
-            ButtonStyle.Danger
-          )
-      );
+      new ButtonBuilder()
+        .setCustomId(
+          `access_reject:${requestId}`
+        )
+        .setLabel("Rejeitar")
+        .setStyle(ButtonStyle.Danger)
+    );
 
   await staffChannel.send({
     embeds: [embed],
@@ -1037,6 +1112,4 @@ async function handleAccessRank(
 // LOGIN
 // ==========================================
 
-client.login(
-  config.discord.token
-);
+client.login(config.discord.token);
