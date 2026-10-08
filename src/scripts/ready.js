@@ -1,9 +1,13 @@
 
 const {
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle
+  ButtonStyle,
+  MessageFlags
 } = require("discord.js");
 
 const db = require("../database/database");
@@ -20,6 +24,12 @@ const PENALTY_LEVELS =
 const ESCALATION_HOURS =
   config.penalties?.escalationWindowHours || 24;
 
+const COLORS = {
+  primary: 0xFF3D2C,
+  success: 0x278451,
+  neutral: 0x2B2D35
+};
+
 let active = false;
 let finishing = false;
 let sessionId = null;
@@ -29,6 +39,10 @@ let players = [];
 let confirmed = new Set();
 let deadline = null;
 let timer = null;
+
+// ==========================================
+// SESSÃO
+// ==========================================
 
 function session() {
   return queueState.getActiveSession();
@@ -63,47 +77,136 @@ function isReadyCheckActive() {
   return active;
 }
 
+// ==========================================
+// SEGURANÇA DE TEXTO
+// ==========================================
+
+function safeText(value, fallback = "Não informado") {
+  return String(value || fallback)
+    .replace(/\\/g, "\\\\")
+    .replace(/([*_~`|])/g, "\\$1")
+    .replace(/@/g, "@\u200b")
+    .slice(0, 80);
+}
+
+// ==========================================
+// PAINEL COMPONENTS V2
+// ==========================================
+
 function panel(status = "active") {
   const done = status === "completed";
   const cancelled = status === "cancelled";
+  const finished = done || cancelled;
 
-  const description = players.map((p) =>
-    `${confirmed.has(p.discordId) ? "✅" : "⏳"} ` +
-    `<@${p.discordId}> — ${p.nickname}`
-  ).join("\n");
+  const count = confirmed.size;
+  const total = players.length;
 
-  const embed = new EmbedBuilder()
-    .setTitle("Ready Check • Matchmaking 5v5")
-    .setDescription(
-      (done
-        ? "Todos confirmaram presença!"
+  const title = done
+    ? "Presenças confirmadas"
+    : cancelled
+      ? "Ready Check encerrado"
+      : "Confirme sua presença";
+
+  const statusText = done
+    ? "Todos os jogadores confirmaram presença."
+    : cancelled
+      ? "O prazo terminou ou a etapa foi cancelada."
+      : `Confirme até <t:${Math.ceil(deadline / 1000)}:R>.`;
+
+  const playerList = players.length
+    ? players.map((player, index) => {
+        const isConfirmed = confirmed.has(player.discordId);
+
+        return (
+          `**${String(index + 1).padStart(2, "0")}.** ` +
+          `<@${player.discordId}> · ` +
+          `${safeText(player.nickname)}\n` +
+          `-# ${isConfirmed
+            ? "✅ Confirmado"
+            : "⏳ Aguardando confirmação"}`
+        );
+      }).join("\n")
+    : "Nenhum jogador registrado.";
+
+  const container = new ContainerBuilder()
+    .setAccentColor(
+      done
+        ? COLORS.success
         : cancelled
-          ? "Ready Check encerrado."
-          : `Confirmem presença até <t:${Math.ceil(deadline / 1000)}:R>.`
-      ) + "\n\n" + description
+          ? COLORS.neutral
+          : COLORS.primary
     )
-    .addFields({
-      name: "Confirmações",
-      value: `${confirmed.size}/${players.length}`,
-      inline: true
-    })
-    .setFooter({
-      text: "Rainbow Six Siege • Matchmaking"
-    });
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "## INVISIXTATIONAL\n" +
+        "### READY CHECK · MATCHMAKING 5V5"
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**${title}**\n${statusText}\n\n` +
+        `**Confirmações:** ${count}/${total}`
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### Jogadores\n${playerList}`
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        finished
+          ? "-# Etapa encerrada."
+          : "-# Quem não confirmar dentro do prazo poderá receber cooldown."
+      )
+    );
 
   const button = new ButtonBuilder()
     .setCustomId("ready_confirm")
-    .setLabel("Confirmar presença")
-    .setStyle(ButtonStyle.Success)
-    .setDisabled(done || cancelled);
+    .setLabel(
+      done
+        ? "Presenças confirmadas"
+        : cancelled
+          ? "Ready Check encerrado"
+          : "Confirmar presença"
+    )
+    .setStyle(
+      done ? ButtonStyle.Secondary : ButtonStyle.Success
+    )
+    .setDisabled(finished);
 
   return {
-    embeds: [embed],
+    content: null,
+    embeds: [],
     components: [
+      container,
       new ActionRowBuilder().addComponents(button)
-    ]
+    ],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: {
+      parse: []
+    }
   };
 }
+
+// ==========================================
+// PERSISTÊNCIA
+// ==========================================
 
 function saveState() {
   const current = session();
@@ -137,17 +240,28 @@ function saveState() {
   );
 }
 
+// ==========================================
+// TEMPORIZADOR
+// ==========================================
+
 function scheduleTimeout() {
   clearTimer();
 
   if (!active || finishing || !deadline) return;
 
   timer = setTimeout(() => {
-    handleReadyCheckTimeout().catch((error) =>
-      console.error("Erro no timeout do Ready Check:", error)
+    handleReadyCheckTimeout().catch(error =>
+      console.error(
+        "Erro no timeout do Ready Check:",
+        error
+      )
     );
   }, Math.max(0, deadline - Date.now()));
 }
+
+// ==========================================
+// ATUALIZAÇÃO DO PAINEL
+// ==========================================
 
 async function editPanel(status = "active") {
   if (!message) return;
@@ -155,9 +269,16 @@ async function editPanel(status = "active") {
   try {
     await message.edit(panel(status));
   } catch (error) {
-    console.error("Erro ao atualizar Ready Check:", error);
+    console.error(
+      "Erro ao atualizar Ready Check:",
+      error
+    );
   }
 }
+
+// ==========================================
+// PENALIDADES
+// ==========================================
 
 function penaltyFor(discordId) {
   if (config.penalties?.enabled === false) return 0;
@@ -186,7 +307,12 @@ function penaltyFor(discordId) {
       session_id, created_at
     )
     VALUES (?, 'ready_check_timeout', ?, ?, ?)
-  `).run(discordId, minutes * 60, sessionId, Date.now());
+  `).run(
+    discordId,
+    minutes * 60,
+    sessionId,
+    Date.now()
+  );
 
   db.prepare(`
     INSERT INTO player_cooldowns (
@@ -204,12 +330,19 @@ function penaltyFor(discordId) {
   return minutes;
 }
 
+// ==========================================
+// INICIAR READY CHECK
+// ==========================================
+
 async function startReadyCheck(interaction, selectedPlayers) {
-  if (active) throw new Error("READY_CHECK_ALREADY_ACTIVE");
+  if (active) {
+    throw new Error("READY_CHECK_ALREADY_ACTIVE");
+  }
 
   if (
     !Array.isArray(selectedPlayers) ||
-    selectedPlayers.length !== config.matchmaking.requiredPlayers ||
+    selectedPlayers.length !==
+      config.matchmaking.requiredPlayers ||
     new Set(selectedPlayers.map(p => p.discordId)).size !==
       selectedPlayers.length
   ) {
@@ -218,7 +351,9 @@ async function startReadyCheck(interaction, selectedPlayers) {
 
   const current = session();
 
-  if (!current) throw new Error("READY_CHECK_SESSION_NOT_FOUND");
+  if (!current) {
+    throw new Error("READY_CHECK_SESSION_NOT_FOUND");
+  }
 
   players = [...selectedPlayers];
   confirmed = new Set();
@@ -242,7 +377,11 @@ async function startReadyCheck(interaction, selectedPlayers) {
           state_json = '{}',
           updated_at = ?
       WHERE id = ?
-    `).run(deadline, Date.now(), sessionId);
+    `).run(
+      deadline,
+      Date.now(),
+      sessionId
+    );
   })();
 
   try {
@@ -259,6 +398,10 @@ async function startReadyCheck(interaction, selectedPlayers) {
   }
 }
 
+// ==========================================
+// CONFIRMAR PRESENÇA
+// ==========================================
+
 async function handleReadyCheck(interaction) {
   const current = session();
 
@@ -271,14 +414,14 @@ async function handleReadyCheck(interaction) {
   ) {
     return interaction.reply({
       content: "Não existe um Ready Check ativo.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
   if (Date.now() >= deadline) {
     await interaction.reply({
       content: "O prazo para confirmar terminou.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
 
     await handleReadyCheckTimeout();
@@ -290,14 +433,14 @@ async function handleReadyCheck(interaction) {
   if (!players.some(p => p.discordId === id)) {
     return interaction.reply({
       content: "Você não participa deste Ready Check.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
   if (confirmed.has(id)) {
     return interaction.reply({
       content: "Você já confirmou presença.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -312,7 +455,7 @@ async function handleReadyCheck(interaction) {
   if (!result.changes) {
     return interaction.reply({
       content: "Sua presença já foi registrada.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -326,6 +469,10 @@ async function handleReadyCheck(interaction) {
     await editPanel();
   }
 }
+
+// ==========================================
+// FINALIZAR READY CHECK
+// ==========================================
 
 async function finishReadyCheck(interaction = null) {
   if (!active || finishing) return;
@@ -359,9 +506,10 @@ async function finishReadyCheck(interaction = null) {
 
   const context = interaction || {
     client,
-    followUp: async (payload) => {
+    followUp: async payload => {
       const channel = await client.channels.fetch(
-        message?.channelId || config.discord.queueChannelId
+        message?.channelId ||
+        config.discord.queueChannelId
       );
       return channel.send(payload);
     }
@@ -371,10 +519,17 @@ async function finishReadyCheck(interaction = null) {
     await startCaptainVote(context, [...players]);
     resetReadyCheck();
   } catch (error) {
-    console.error("Erro ao iniciar votação de capitães:", error);
+    console.error(
+      "Erro ao iniciar votação de capitães:",
+      error
+    );
     throw error;
   }
 }
+
+// ==========================================
+// TIMEOUT
+// ==========================================
 
 async function handleReadyCheckTimeout() {
   if (!active || finishing) return;
@@ -391,13 +546,14 @@ async function handleReadyCheckTimeout() {
   finishing = true;
   clearTimer();
 
-  const absent = players.filter(p => !confirmed.has(p.discordId));
+  const absent = players.filter(
+    p => !confirmed.has(p.discordId)
+  );
+
   const penalties = [];
 
   db.transaction(() => {
     for (const player of absent) {
-      // Evita registrar duas penalidades para
-      // o mesmo jogador na mesma sessão.
       const alreadyPenalized = db.prepare(`
         SELECT 1
         FROM player_penalty_history
@@ -441,11 +597,15 @@ async function handleReadyCheckTimeout() {
         content:
           "⏱️ Ready Check encerrado por falta de confirmação." +
           (lines.length
-            ? "\n\n**Cooldowns aplicados:**\n" + lines.join("\n")
+            ? "\n\n**Cooldowns aplicados:**\n" +
+              lines.join("\n")
             : "")
       });
     } catch (error) {
-      console.error("Erro ao anunciar timeout:", error);
+      console.error(
+        "Erro ao anunciar timeout:",
+        error
+      );
     }
   }
 
@@ -457,23 +617,33 @@ async function handleReadyCheckTimeout() {
   await updateQueuePanel();
 }
 
+// ==========================================
+// RECUPERAÇÃO APÓS REINÍCIO
+// ==========================================
+
 async function restoreReadyCheck(restoredClient) {
   const current = session();
 
-  if (!current || current.stage !== "ready_check") return false;
+  if (!current || current.stage !== "ready_check") {
+    return false;
+  }
+
   if (active) return true;
 
   const rows = db.prepare(`
     SELECT sp.discord_id, sp.ready_confirmed,
            p.r6_nickname, p.r6_rank
     FROM matchmaking_session_players sp
-    LEFT JOIN players p ON p.discord_id = sp.discord_id
+    LEFT JOIN players p
+      ON p.discord_id = sp.discord_id
     WHERE sp.session_id = ?
     ORDER BY sp.joined_at, sp.id
   `).all(current.id);
 
   if (!rows.length) {
-    console.error("Ready Check sem participantes para recuperar.");
+    console.error(
+      "Ready Check sem participantes para recuperar."
+    );
     return false;
   }
 
@@ -484,13 +654,17 @@ async function restoreReadyCheck(restoredClient) {
   }));
 
   confirmed = new Set(
-    rows.filter(row => row.ready_confirmed === 1)
+    rows
+      .filter(row => row.ready_confirmed === 1)
       .map(row => row.discord_id)
   );
 
   let state = {};
+
   try {
-    state = JSON.parse(current.state_json || "{}").readyCheck || {};
+    state =
+      JSON.parse(current.state_json || "{}")
+        .readyCheck || {};
   } catch {
     state = {};
   }
@@ -502,7 +676,8 @@ async function restoreReadyCheck(restoredClient) {
   finishing = false;
 
   const channel = await client.channels.fetch(
-    state.channelId || config.discord.queueChannelId
+    state.channelId ||
+    config.discord.queueChannelId
   );
 
   if (!channel?.send) {
@@ -512,7 +687,9 @@ async function restoreReadyCheck(restoredClient) {
 
   if (state.messageId && channel.messages) {
     try {
-      message = await channel.messages.fetch(state.messageId);
+      message = await channel.messages.fetch(
+        state.messageId
+      );
     } catch {
       message = null;
     }
@@ -536,12 +713,20 @@ async function restoreReadyCheck(restoredClient) {
   return true;
 }
 
+// ==========================================
+// CANCELAR
+// ==========================================
+
 function cancelReadyCheck() {
   if (!active) return false;
 
   resetReadyCheck();
   return true;
 }
+
+// ==========================================
+// EXPORTAÇÕES
+// ==========================================
 
 module.exports = {
   startReadyCheck,
