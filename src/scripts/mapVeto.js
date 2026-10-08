@@ -1,3 +1,4 @@
+
 const {
   ContainerBuilder,
   TextDisplayBuilder,
@@ -10,17 +11,16 @@ const {
   MessageFlags
 } = require("discord.js");
 
-const fs = require("node:fs");
-const path = require("node:path");
-
 const db = require("../database/database");
 const config = require("../config/config");
 const queueState = require("./queueState");
 
-const { startSideChoice } = require("./side");
+const {
+  startSideChoice
+} = require("./side");
 
 // ==========================================
-// MAPAS E IMAGENS
+// MAP POOL
 // ==========================================
 
 const MAP_POOL = [
@@ -35,45 +35,38 @@ const MAP_POOL = [
   "Fortress"
 ];
 
-const MAP_SLUGS = {
-  Bank: "bank",
-  Border: "border",
-  Chalet: "chalet",
-  Clubhouse: "clubhouse",
-  Villa: "villa",
-  "Kafe Dostoyevsky": "kafe-dostoyevsky",
-  Lair: "lair",
-  "Nighthaven Labs": "nighthaven-labs",
-  Fortress: "fortress"
+// ==========================================
+// IMAGENS OFICIAIS UBISOFT
+// ==========================================
+
+const MAP_IMAGE_URLS = {
+  Bank:
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/4mjO2UYo1gqwhess6Mi5gb/a08a0b4886d73742e4d60315b9f21106/R6S_Maps_Bank_INT.jpg",
+
+  Border:
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/5vsJsf9T6r7aFBLJX8dJOG/dafc156a04d0a488768bb67f4571ee9e/R6S_Maps_Border_INT.jpg",
+
+  Chalet:
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/4M17EQjgQCJOy2NpZM08OT/36c6b2db0da388d851a5c518335c9145/R6S_Maps_Chalet_INT.jpg",
+
+  Clubhouse:
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/2ljlmbIAzZyVPSxOIcnlBn/da345d768d59f205b55ebae07c9f5ab1/R6S_Maps_Clubhouse_INT.jpg",
+
+  Villa:
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/6unM0FYNkxPsr7BSiKLPR5/1a3e9cf2565be709e993a809457e595a/r6s-maps-villa-main.jpg",
+
+  "Kafe Dostoyevsky":
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/2fFapm8NXcr8tVPK5wKvAw/7badc6f2631b4954e11acb087b5cf24d/R6S_Maps_RussianCafe_INT.jpg",
+
+  Lair:
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/2bKyUztyfsi7HfL9RGtPb9/b34c837688b2b4db51ce1e97520d61ef/ModernizedMap_Lair_keyart.jpg",
+
+  "Nighthaven Labs":
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/2gMeZHxuUrUzHTTBdxqGJJ/3bb639dc291983d825cbde80c15efbad/ModernizedMap_Nighthaven_keyart.jpg",
+
+  Fortress:
+    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/4WTHlSiKQwN09UHrKTSxo8/579a9b6411b879591f9a01124a0bae99/fortress-reworked-keyart.jpg"
 };
-
-const MAP_IMAGES_DIR = path.resolve(
-  __dirname,
-  "../assets/maps"
-);
-
-// Opcional: URLs HTTPS das imagens no Railway.
-// Exemplo:
-// MAP_IMAGE_URLS={"Bank":"https://exemplo.com/bank.jpg"}
-let MAP_IMAGE_URLS = {};
-
-try {
-  const parsed = JSON.parse(
-    process.env.MAP_IMAGE_URLS || "{}"
-  );
-
-  if (
-    parsed &&
-    typeof parsed === "object" &&
-    !Array.isArray(parsed)
-  ) {
-    MAP_IMAGE_URLS = parsed;
-  }
-} catch {
-  console.warn(
-    "MAP_IMAGE_URLS inválido. Usando imagens locais."
-  );
-}
 
 const BAN_TIMEOUT_SECONDS =
   config.matchmaking?.mapBanSeconds || 30;
@@ -89,6 +82,7 @@ const COLORS = {
 
 let vetoActive = false;
 let vetoFinishing = false;
+let processingBan = false;
 
 let captainA = null;
 let captainB = null;
@@ -108,9 +102,6 @@ let vetoSessionId = null;
 
 let banDeadline = null;
 let banTimeout = null;
-
-// Impede dois banimentos simultâneos.
-let processingBan = false;
 
 // ==========================================
 // UTILITÁRIOS
@@ -134,19 +125,20 @@ function getCurrentCaptain() {
     : captainB;
 }
 
-function separator(container) {
-  container.addSeparatorComponents(
-    new SeparatorBuilder()
-      .setSpacing(SeparatorSpacingSize.Small)
-      .setDivider(true)
+function addText(container, content) {
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder()
+      .setContent(content)
   );
 
   return container;
 }
 
-function addText(container, content) {
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(content)
+function addSeparator(container) {
+  container.addSeparatorComponents(
+    new SeparatorBuilder()
+      .setSpacing(SeparatorSpacingSize.Small)
+      .setDivider(true)
   );
 
   return container;
@@ -186,66 +178,18 @@ function scheduleBanTimeout() {
 }
 
 // ==========================================
-// IMAGENS DOS MAPAS
+// GALERIA DE MAPAS
 // ==========================================
-
-function getMapImage(map) {
-  const slug = MAP_SLUGS[map];
-
-  if (!slug) {
-    return null;
-  }
-
-  const remoteUrl = MAP_IMAGE_URLS[map];
-
-  if (
-    typeof remoteUrl === "string" &&
-    /^https:\/\//i.test(remoteUrl)
-  ) {
-    return {
-      url: remoteUrl,
-      file: null
-    };
-  }
-
-  for (const extension of [
-    "jpg",
-    "jpeg",
-    "png",
-    "webp"
-  ]) {
-    const filePath = path.join(
-      MAP_IMAGES_DIR,
-      `${slug}.${extension}`
-    );
-
-    if (fs.existsSync(filePath)) {
-      const filename =
-        `r6-map-${slug}.${extension}`;
-
-      return {
-        url: `attachment://${filename}`,
-        file: {
-          attachment: filePath,
-          name: filename
-        }
-      };
-    }
-  }
-
-  return null;
-}
 
 function createMapGallery(maps) {
   const gallery = new MediaGalleryBuilder();
 
-  const files = [];
-  let count = 0;
+  let added = 0;
 
   for (const map of maps) {
-    const image = getMapImage(map);
+    const url = MAP_IMAGE_URLS[map];
 
-    if (!image) {
+    if (!url) {
       continue;
     }
 
@@ -258,23 +202,16 @@ function createMapGallery(maps) {
 
     gallery.addItems(
       new MediaGalleryItemBuilder()
-        .setURL(image.url)
+        .setURL(url)
         .setDescription(
           `${map} · ${status}`
         )
     );
 
-    if (image.file) {
-      files.push(image.file);
-    }
-
-    count++;
+    added++;
   }
 
-  return {
-    gallery: count > 0 ? gallery : null,
-    files
-  };
+  return added > 0 ? gallery : null;
 }
 
 // ==========================================
@@ -325,12 +262,14 @@ function saveMapVetoState() {
 }
 
 // ==========================================
-// CRIAR PAINEL
+// CRIAR PAINEL DE VETO
 // ==========================================
 
 function createMapVetoPanel() {
   if (!vetoActive) {
-    throw new Error("MAP_VETO_NOT_ACTIVE");
+    throw new Error(
+      "MAP_VETO_NOT_ACTIVE"
+    );
   }
 
   const captain = getCurrentCaptain();
@@ -346,25 +285,22 @@ function createMapVetoPanel() {
     : "Encerrado";
 
   const availableList = availableMaps.length
-    ? availableMaps
-        .map(map => `🟢 ${safeText(map)}`)
-        .join("\n")
+    ? availableMaps.map(
+        map => `🟢 ${safeText(map)}`
+      ).join("\n")
     : "Nenhum mapa disponível.";
 
   const bannedList = bannedMaps.length
-    ? bannedMaps
-        .map((ban, index) => {
-          const automatic = ban.automatic
-            ? " · Automático"
-            : "";
-
-          return (
-            `**${String(index + 1).padStart(2, "0")}.** ` +
-            `❌ ${safeText(ban.map)} ` +
-            `· Time ${ban.captainTeam}${automatic}`
-          );
-        })
-        .join("\n")
+    ? bannedMaps.map((ban, index) => {
+        return (
+          `**${String(index + 1).padStart(2, "0")}.** ` +
+          `❌ ${safeText(ban.map)} · ` +
+          `Time ${ban.captainTeam}` +
+          (ban.automatic
+            ? " *(automático)*"
+            : "")
+        );
+      }).join("\n")
     : "Nenhum mapa banido.";
 
   const container = new ContainerBuilder()
@@ -377,7 +313,7 @@ function createMapVetoPanel() {
     "-# Rainbow Six Siege · Matchmaking competitivo"
   );
 
-  separator(container);
+  addSeparator(container);
 
   addText(
     container,
@@ -391,67 +327,62 @@ function createMapVetoPanel() {
     `**Mapas disponíveis:** ${availableMaps.length}`
   );
 
-  separator(container);
+  addSeparator(container);
 
   addText(
     container,
     "### MAP POOL\n" +
-    "-# Imagens dos mapas da partida"
+    "-# Selecione no menu abaixo o mapa que deseja banir."
   );
 
-  const {
-    gallery,
-    files
-  } = createMapGallery(MAP_POOL);
+  const gallery =
+    createMapGallery(MAP_POOL);
 
   if (gallery) {
-    container.addMediaGalleryComponents(gallery);
-  } else {
-    addText(
-      container,
-      "-# Adicione as imagens em src/assets/maps " +
-      "para visualizar a galeria."
+    container.addMediaGalleryComponents(
+      gallery
     );
   }
 
-  separator(container);
+  addSeparator(container);
 
   addText(
     container,
     `### MAPAS DISPONÍVEIS\n${availableList}`
   );
 
-  separator(container);
+  addSeparator(container);
 
   addText(
     container,
     `### HISTÓRICO DE BANIMENTOS\n${bannedList}`
   );
 
-  separator(container);
+  addSeparator(container);
 
   addText(
     container,
-    "-# Se o tempo terminar, o sistema " +
-    "banirá um mapa automaticamente."
+    "-# Se o tempo terminar, um mapa será " +
+    "banido automaticamente."
   );
 
   const components = [container];
 
   if (availableMaps.length > 1) {
-    const select = new StringSelectMenuBuilder()
-      .setCustomId("map_veto")
-      .setPlaceholder(
-        "Selecione um mapa para banir"
-      )
-      .setMinValues(1)
-      .setMaxValues(1)
-      .addOptions(
-        availableMaps.map(map => ({
-          label: map,
-          value: map
-        }))
-      );
+    const select =
+      new StringSelectMenuBuilder()
+        .setCustomId("map_veto")
+        .setPlaceholder(
+          "Selecione um mapa para banir"
+        )
+        .setMinValues(1)
+        .setMaxValues(1)
+        .addOptions(
+          availableMaps.map(map => ({
+            label: map,
+            value: map
+          }))
+        );
 
     components.push(
       new ActionRowBuilder()
@@ -461,7 +392,6 @@ function createMapVetoPanel() {
 
   return {
     components,
-    files,
     flags: MessageFlags.IsComponentsV2,
     allowedMentions: {
       parse: []
@@ -475,18 +405,16 @@ function createMapVetoPanel() {
 
 function createFinishedMapVetoPanel() {
   const bannedList = bannedMaps.length
-    ? bannedMaps
-        .map((ban, index) => {
-          return (
-            `**${index + 1}.** ` +
-            `${safeText(ban.map)} · ` +
-            `Time ${ban.captainTeam}` +
-            (ban.automatic
-              ? " *(automático)*"
-              : "")
-          );
-        })
-        .join("\n")
+    ? bannedMaps.map((ban, index) => {
+        return (
+          `**${index + 1}.** ` +
+          `${safeText(ban.map)} · ` +
+          `Time ${ban.captainTeam}` +
+          (ban.automatic
+            ? " *(automático)*"
+            : "")
+        );
+      }).join("\n")
     : "Nenhum.";
 
   const container = new ContainerBuilder()
@@ -498,7 +426,7 @@ function createFinishedMapVetoPanel() {
     "### MAPA DEFINIDO"
   );
 
-  separator(container);
+  addSeparator(container);
 
   addText(
     container,
@@ -506,24 +434,25 @@ function createFinishedMapVetoPanel() {
     "🏆 **Mapa selecionado para a partida**"
   );
 
-  const {
-    gallery,
-    files
-  } = createMapGallery([selectedMap]);
+  const gallery =
+    createMapGallery([selectedMap]);
 
   if (gallery) {
-    separator(container);
-    container.addMediaGalleryComponents(gallery);
+    addSeparator(container);
+
+    container.addMediaGalleryComponents(
+      gallery
+    );
   }
 
-  separator(container);
+  addSeparator(container);
 
   addText(
     container,
     `### HISTÓRICO DE VETOS\n${bannedList}`
   );
 
-  separator(container);
+  addSeparator(container);
 
   addText(
     container,
@@ -532,7 +461,6 @@ function createFinishedMapVetoPanel() {
 
   return {
     components: [container],
-    files,
     flags: MessageFlags.IsComponentsV2,
     allowedMentions: {
       parse: []
@@ -1033,7 +961,7 @@ async function finishMapVeto(
 }
 
 // ==========================================
-// RECUPERAÇÃO APÓS REINICIAR O BOT
+// RECUPERAÇÃO
 // ==========================================
 
 async function restoreMapVeto(client) {
