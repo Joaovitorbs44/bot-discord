@@ -23,6 +23,8 @@ const {
 } = require("./mapVetoImage");
 
 const PRIMARY = 0xFF3D2C;
+const SESSION_MS = 60 * 60 * 1000;
+const MAX_SESSIONS = 100;
 
 const PANELS = [
   ["queue", "Fila"],
@@ -36,12 +38,18 @@ const PANELS = [
   ["result", "Resultado final"]
 ];
 
+const DRAFT_ROUNDS = [
+  { captain: "A", picks: 1 },
+  { captain: "B", picks: 2 },
+  { captain: "A", picks: 2 },
+  { captain: "B", picks: 2 },
+  { captain: "A", picks: 1 }
+];
+
 const PLAYERS = Array.from(
   { length: 10 },
   (_, i) => ({
-    id:
-      "player" +
-      String(i + 1).padStart(2, "0"),
+    id: `player${String(i + 1).padStart(2, "0")}`,
     rank: [
       "Diamante",
       "Esmeralda",
@@ -52,10 +60,8 @@ const PLAYERS = Array.from(
   })
 );
 
+const PLAYER_IDS = PLAYERS.map(player => player.id);
 const sessions = new Map();
-
-const SESSION_MS = 60 * 60 * 1000;
-const MAX_SESSIONS = 100;
 
 // ==========================================
 // ESTADO DA SIMULAÇÃO
@@ -64,16 +70,11 @@ const MAX_SESSIONS = 100;
 function newSession() {
   return {
     panel: "queue",
-    queue: PLAYERS.slice(0, 6).map(
-      player => player.id
-    ),
+    queue: PLAYER_IDS.slice(0, 6),
     ready: [],
     votes: {},
     captains: [],
-    teams: {
-      A: [],
-      B: []
-    },
+    teams: { A: [], B: [] },
     draftStep: 0,
     bans: [],
     selectedMap: null,
@@ -90,34 +91,24 @@ function getSession(id, reset = false) {
   const now = Date.now();
 
   for (const [key, session] of sessions) {
-    if (
-      now - session.updated >
-      SESSION_MS
-    ) {
+    if (now - session.updated > SESSION_MS) {
       sessions.delete(key);
     }
   }
 
   if (reset || !sessions.has(id)) {
     if (sessions.size >= MAX_SESSIONS) {
-      sessions.delete(
-        sessions.keys().next().value
-      );
+      sessions.delete(sessions.keys().next().value);
     }
 
     sessions.set(id, newSession());
   }
 
   const session = sessions.get(id);
-
   session.updated = now;
 
   return session;
 }
-
-// ==========================================
-// PERMISSÕES
-// ==========================================
 
 function isStaff(interaction) {
   const roleId =
@@ -147,66 +138,51 @@ function isStaff(interaction) {
 // COMPONENTES VISUAIS
 // ==========================================
 
-function addText(container, content) {
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder()
-      .setContent(content)
+function addText(c, content) {
+  c.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(content)
   );
 }
 
-function separator(container) {
-  container.addSeparatorComponents(
+function separator(c) {
+  c.addSeparatorComponents(
     new SeparatorBuilder()
       .setDivider(true)
-      .setSpacing(
-        SeparatorSpacingSize.Small
-      )
+      .setSpacing(SeparatorSpacingSize.Small)
   );
 }
 
 function container(title, subtitle) {
-  const component = new ContainerBuilder()
+  const c = new ContainerBuilder()
     .setAccentColor(PRIMARY);
 
   addText(
-    component,
-    [
-      "## INVISIXTATIONAL",
-      "### " + title,
-      "-# " + subtitle
-    ].join("\n")
+    c,
+    `## INVISIXTATIONAL\n` +
+    `### ${title}\n` +
+    `-# ${subtitle}`
   );
 
-  separator(component);
-
-  return component;
+  separator(c);
+  return c;
 }
 
 function list(ids, captains = []) {
-  if (!ids.length) {
-    return "-# Nenhum jogador";
-  }
+  if (!ids.length) return "-# Nenhum jogador";
 
   return ids.map(id => {
-    const player = PLAYERS.find(
-      item => item.id === id
-    );
-
-    const marker = captains.includes(id)
-      ? "👑"
-      : "•";
+    const player = PLAYERS.find(p => p.id === id);
 
     return (
-      marker +
-      " **" + id + "** · " +
-      (player?.rank || "—")
+      `${captains.includes(id) ? "👑" : "•"} ` +
+      `**${id}** · ${player?.rank || "—"}`
     );
   }).join("\n");
 }
 
-function row(...buttons) {
+function row(...components) {
   return new ActionRowBuilder()
-    .addComponents(buttons);
+    .addComponents(components);
 }
 
 function button(
@@ -216,9 +192,7 @@ function button(
   disabled = false
 ) {
   return new ButtonBuilder()
-    .setCustomId(
-      "preview_action:" + action
-    )
+    .setCustomId(`preview_action:${action}`)
     .setLabel(label)
     .setStyle(style)
     .setDisabled(disabled);
@@ -231,73 +205,48 @@ function select(
   min = 1,
   max = 1
 ) {
-  const options = values.map(value => {
-    return typeof value === "string"
-      ? {
-          label: value,
-          value
-        }
-      : value;
-  });
+  const options = values.map(value =>
+    typeof value === "string"
+      ? { label: value, value }
+      : value
+  );
 
-  return new ActionRowBuilder()
-    .addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId(
-          "preview_choice:" + action
-        )
-        .setPlaceholder(placeholder)
-        .setMinValues(min)
-        .setMaxValues(max)
-        .addOptions(options)
-    );
+  return row(
+    new StringSelectMenuBuilder()
+      .setCustomId(`preview_choice:${action}`)
+      .setPlaceholder(placeholder)
+      .setMinValues(min)
+      .setMaxValues(max)
+      .addOptions(options)
+  );
 }
 
 // ==========================================
-// DRAFT
+// DRAFT 1-2-2-2-1
 // ==========================================
 
-function currentDraftTeam(session) {
-  const order = [
-    "A", "B", "B", "A",
-    "A", "B", "B", "A"
-  ];
-
-  return order[session.draftStep] || null;
+function currentDraftRound(session) {
+  return DRAFT_ROUNDS[session.draftStep] || null;
 }
 
 function availableDraft(session) {
-  return PLAYERS.map(
-    player => player.id
-  ).filter(id => {
-    return (
-      !session.teams.A.includes(id) &&
-      !session.teams.B.includes(id)
-    );
-  });
+  return PLAYER_IDS.filter(id =>
+    !session.teams.A.includes(id) &&
+    !session.teams.B.includes(id)
+  );
 }
 
 function autoCaptains(session) {
   const totals = {};
 
-  for (
-    const voted of Object.values(
-      session.votes
-    )
-  ) {
-    totals[voted] =
-      (totals[voted] || 0) + 1;
+  for (const voted of Object.values(session.votes)) {
+    totals[voted] = (totals[voted] || 0) + 1;
   }
 
-  const ranked = PLAYERS.map(
-    player => player.id
-  ).sort((a, b) => {
-    return (
-      (totals[b] || 0) -
-      (totals[a] || 0) ||
-      a.localeCompare(b)
-    );
-  });
+  const ranked = [...PLAYER_IDS].sort((a, b) =>
+    (totals[b] || 0) - (totals[a] || 0) ||
+    a.localeCompare(b)
+  );
 
   session.captains = ranked.slice(0, 2);
 
@@ -315,35 +264,62 @@ function ensureDraft(session) {
   }
 }
 
+function applyDraftPicks(session, selectedIds) {
+  ensureDraft(session);
+
+  const round = currentDraftRound(session);
+
+  if (!round) return false;
+
+  if (
+    !Array.isArray(selectedIds) ||
+    selectedIds.length !== round.picks ||
+    new Set(selectedIds).size !== round.picks
+  ) {
+    return false;
+  }
+
+  const available = availableDraft(session);
+
+  if (!selectedIds.every(id => available.includes(id))) {
+    return false;
+  }
+
+  session.teams[round.captain].push(...selectedIds);
+  session.draftStep++;
+
+  return true;
+}
+
 function ensureTeams(session) {
   ensureDraft(session);
 
-  while (availableDraft(session).length) {
-    const team =
-      currentDraftTeam(session) ||
-      (
-        session.teams.A.length <=
-        session.teams.B.length
-          ? "A"
-          : "B"
-      );
+  while (currentDraftRound(session)) {
+    const round = currentDraftRound(session);
 
-    session.teams[team].push(
-      availableDraft(session)[0]
-    );
+    const selected = availableDraft(session)
+      .slice(0, round.picks);
 
-    session.draftStep++;
+    if (!applyDraftPicks(session, selected)) {
+      break;
+    }
   }
+}
+
+// ==========================================
+// MAPAS E RESULTADOS
+// ==========================================
+
+function availableMaps(session) {
+  return MAP_POOL.filter(map =>
+    !session.bans.some(ban => ban.map === map)
+  );
 }
 
 function ensureMap(session) {
   if (!session.selectedMap) {
     session.selectedMap =
-      MAP_POOL.find(map => {
-        return !session.bans.some(
-          ban => ban.map === map
-        );
-      }) || MAP_POOL[0];
+      availableMaps(session)[0] || MAP_POOL[0];
   }
 }
 
@@ -351,13 +327,8 @@ function ensureResult(session) {
   ensureTeams(session);
   ensureMap(session);
 
-  if (!session.side) {
-    session.side = "attack";
-  }
-
-  if (!session.winner) {
-    session.winner = "A";
-  }
+  if (!session.side) session.side = "attack";
+  if (!session.winner) session.winner = "A";
 }
 
 // ==========================================
@@ -367,7 +338,6 @@ function ensureResult(session) {
 async function buildPanel(session) {
   const components = [];
   const files = [];
-
   let c;
 
   switch (session.panel) {
@@ -448,29 +418,21 @@ async function buildPanel(session) {
 
       addText(
         c,
-        PLAYERS.map(player => {
-          return (
-            (
-              session.ready.includes(player.id)
-                ? "✅"
-                : "⏳"
-            ) +
-            " " +
-            player.id
-          );
-        }).join("\n")
+        PLAYER_IDS.map(id =>
+          `${session.ready.includes(id) ? "✅" : "⏳"} ${id}`
+        ).join("\n")
       );
 
-      if (session.ready.length < 10) {
+      const pending = PLAYER_IDS.filter(
+        id => !session.ready.includes(id)
+      );
+
+      if (pending.length) {
         components.push(
           select(
             "ready",
             "Confirmar jogador",
-            PLAYERS.map(
-              player => player.id
-            ).filter(id => {
-              return !session.ready.includes(id);
-            })
+            pending
           )
         );
       }
@@ -481,13 +443,13 @@ async function buildPanel(session) {
             "ready_all",
             "Confirmar todos",
             ButtonStyle.Primary,
-            session.ready.length === 10
+            pending.length === 0
           ),
           button(
             "to_captains",
             "Votar capitães",
             ButtonStyle.Success,
-            session.ready.length !== 10
+            pending.length !== 0
           )
         )
       );
@@ -503,12 +465,9 @@ async function buildPanel(session) {
 
       addText(
         c,
-        `**Votos:** ${
-          Object.keys(session.votes).length
-        }/10\n` +
+        `**Votos:** ${Object.keys(session.votes).length}/10\n` +
         `**Capitães:** ${
-          session.captains.join(" e ") ||
-          "A definir"
+          session.captains.join(" e ") || "A definir"
         }`
       );
 
@@ -516,33 +475,20 @@ async function buildPanel(session) {
 
       addText(
         c,
-        PLAYERS.map(player => {
-          const voted =
-            session.votes[player.id];
-
-          return (
-            (voted ? "✅" : "⏳") +
-            " " +
-            player.id +
-            (
-              voted
-                ? " → " + voted
-                : ""
-            )
-          );
-        }).join("\n")
+        PLAYER_IDS.map(id =>
+          `${session.votes[id] ? "✅" : "⏳"} ${id}` +
+          (session.votes[id]
+            ? ` → ${session.votes[id]}`
+            : "")
+        ).join("\n")
       );
 
-      if (
-        Object.keys(session.votes).length < 10
-      ) {
+      if (Object.keys(session.votes).length < 10) {
         components.push(
           select(
             "captain",
             "Vote no capitão",
-            PLAYERS.map(
-              player => player.id
-            )
+            PLAYER_IDS
           )
         );
       }
@@ -569,26 +515,30 @@ async function buildPanel(session) {
     case "draft": {
       ensureDraft(session);
 
-      const available =
-        availableDraft(session);
-
-      const team =
-        currentDraftTeam(session);
+      const round = currentDraftRound(session);
+      const available = availableDraft(session);
 
       c = container(
         "DRAFT 5V5",
-        "ESCOLHA DE JOGADORES"
+        "SISTEMA DE ESCOLHA 1-2-2-2-1"
       );
 
       addText(
         c,
-        `**Escolha:** ${
-          Math.min(session.draftStep + 1, 8)
-        }/8\n` +
+        `**Rodada:** ${
+          round
+            ? `${session.draftStep + 1}/5`
+            : "5/5 · Concluído"
+        }\n` +
         `**Vez:** ${
-          team
-            ? "Time " + team
-            : "Concluído"
+          round
+            ? `👑 ${session.captains[
+                round.captain === "A" ? 0 : 1
+              ]} · Time ${round.captain}`
+            : "Draft finalizado"
+        }\n` +
+        `**Escolhas nesta rodada:** ${
+          round ? round.picks : 0
         }\n` +
         `**Disponíveis:** ${available.length}`
       );
@@ -597,31 +547,42 @@ async function buildPanel(session) {
 
       addText(
         c,
-        "### 🔴 TIME A\n" +
-        list(
-          session.teams.A,
-          session.captains
-        )
+        `### 🔴 TIME A · ${session.teams.A.length}/5\n` +
+        list(session.teams.A, session.captains)
       );
 
       separator(c);
 
       addText(
         c,
-        "### 🔵 TIME B\n" +
-        list(
-          session.teams.B,
-          session.captains
-        )
+        `### 🔵 TIME B · ${session.teams.B.length}/5\n` +
+        list(session.teams.B, session.captains)
       );
 
-      if (available.length) {
+      separator(c);
+
+      addText(
+        c,
+        "### JOGADORES DISPONÍVEIS\n" +
+        list(available)
+      );
+
+      if (round && available.length >= round.picks) {
         components.push(
           select(
             "draft",
-            "Escolha um jogador para o Time " +
-              team,
-            available
+            `Escolha ${round.picks} jogador(es) · Time ${round.captain}`,
+            available.map(id => {
+              const player = PLAYERS.find(p => p.id === id);
+
+              return {
+                label: id,
+                value: id,
+                description: player?.rank || "Sem rank"
+              };
+            }),
+            round.picks,
+            round.picks
           )
         );
       }
@@ -632,13 +593,13 @@ async function buildPanel(session) {
             "draft_auto",
             "Completar draft",
             ButtonStyle.Primary,
-            available.length === 0
+            !round
           ),
           button(
             "to_maps",
             "Ir ao veto",
             ButtonStyle.Success,
-            available.length !== 0
+            Boolean(round)
           )
         )
       );
@@ -652,26 +613,16 @@ async function buildPanel(session) {
         "PICK & BAN · MELHOR DE 1"
       );
 
-      const available =
-        MAP_POOL.filter(map => {
-          return !session.bans.some(
-            ban => ban.map === map
-          );
-        });
+      const available = availableMaps(session);
 
       addText(
         c,
-        `**Banimentos:** ${
-          session.bans.length
-        }/8\n` +
+        `**Banimentos:** ${session.bans.length}/8\n` +
         `**Vez:** Time ${
-          session.bans.length % 2
-            ? "B"
-            : "A"
+          session.bans.length % 2 ? "B" : "A"
         }\n` +
         `**Mapa escolhido:** ${
-          session.selectedMap ||
-          "A definir"
+          session.selectedMap || "A definir"
         }`
       );
 
@@ -680,39 +631,28 @@ async function buildPanel(session) {
       addText(
         c,
         "### MAP POOL\n" +
-        "-# Verde: disponível ou escolhido · " +
-        "Vermelho: banido"
+        "-# Verde: disponível ou escolhido · Vermelho: banido"
       );
 
-      const name =
-        "map-veto-preview.png";
+      const imageName = "map-veto-preview.png";
 
-      const image =
-        await generateMapVetoImage({
-          bannedMaps: session.bans,
-          selectedMap: session.selectedMap
-        });
+      const image = await generateMapVetoImage({
+        bannedMaps: session.bans,
+        selectedMap: session.selectedMap
+      });
 
       files.push(
         new AttachmentBuilder(image, {
-          name
+          name: imageName
         })
       );
 
-      const gallery =
-        new MediaGalleryBuilder()
-          .addItems(
-            new MediaGalleryItemBuilder()
-              .setURL(
-                "attachment://" + name
-              )
-              .setDescription(
-                "Mosaico 3x3 dos mapas"
-              )
-          );
-
       c.addMediaGalleryComponents(
-        gallery
+        new MediaGalleryBuilder().addItems(
+          new MediaGalleryItemBuilder()
+            .setURL(`attachment://${imageName}`)
+            .setDescription("Mosaico 3x3 dos mapas")
+        )
       );
 
       separator(c);
@@ -721,9 +661,7 @@ async function buildPanel(session) {
         c,
         "### MAPAS DISPONÍVEIS\n" +
         (
-          available.map(
-            map => "🟢 " + map
-          ).join("\n") ||
+          available.map(map => `🟢 ${map}`).join("\n") ||
           "Nenhum"
         )
       );
@@ -734,24 +672,14 @@ async function buildPanel(session) {
         c,
         "### HISTÓRICO\n" +
         (
-          session.bans.map(
-            (ban, index) => {
-              return (
-                `${index + 1}. ❌ ` +
-                ban.map +
-                " · Time " +
-                ban.captainTeam
-              );
-            }
+          session.bans.map((ban, index) =>
+            `${index + 1}. ❌ ${ban.map} · Time ${ban.captainTeam}`
           ).join("\n") ||
           "-# Sem banimentos"
         )
       );
 
-      if (
-        available.length > 1 &&
-        !session.selectedMap
-      ) {
+      if (available.length > 1 && !session.selectedMap) {
         components.push(
           select(
             "map",
@@ -807,10 +735,7 @@ async function buildPanel(session) {
       addText(
         c,
         "### 🔴 TIME A\n" +
-        list(
-          session.teams.A,
-          session.captains
-        )
+        list(session.teams.A, session.captains)
       );
 
       separator(c);
@@ -818,10 +743,7 @@ async function buildPanel(session) {
       addText(
         c,
         "### 🔵 TIME B\n" +
-        list(
-          session.teams.B,
-          session.captains
-        )
+        list(session.teams.B, session.captains)
       );
 
       components.push(
@@ -883,10 +805,7 @@ async function buildPanel(session) {
             : "ATAQUE"
         ) +
         "\n" +
-        list(
-          session.teams.A,
-          session.captains
-        )
+        list(session.teams.A, session.captains)
       );
 
       separator(c);
@@ -900,10 +819,7 @@ async function buildPanel(session) {
             : "DEFESA"
         ) +
         "\n" +
-        list(
-          session.teams.B,
-          session.captains
-        )
+        list(session.teams.B, session.captains)
       );
 
       components.push(
@@ -935,9 +851,7 @@ async function buildPanel(session) {
       addText(
         c,
         `**Mapa:** ${session.selectedMap}\n` +
-        `**Vencedor informado:** Time ${
-          session.winner
-        }\n` +
+        `**Vencedor informado:** Time ${session.winner}\n` +
         `**Status:** ${
           session.disputed
             ? "⚠️ Contestado"
@@ -950,10 +864,8 @@ async function buildPanel(session) {
       addText(
         c,
         session.disputed
-          ? "A Staff pode decidir o vencedor " +
-            "ou cancelar a simulação."
-          : "Confirme ou conteste o " +
-            "resultado fictício."
+          ? "A Staff pode decidir o vencedor ou cancelar a simulação."
+          : "Confirme ou conteste o resultado fictício."
       );
 
       if (!session.disputed) {
@@ -1012,9 +924,7 @@ async function buildPanel(session) {
             ? "Finalizada"
             : "Prévia demonstrativa"
         }\n` +
-        `🏆 **Time ${
-          session.winner
-        } venceu!**`
+        `🏆 **Time ${session.winner} venceu!**`
       );
 
       separator(c);
@@ -1030,57 +940,44 @@ async function buildPanel(session) {
 
       separator(c);
 
+      const loser =
+        session.winner === "A" ? "B" : "A";
+
       addText(
         c,
         "### DERROTADOS · -3 PONTOS\n" +
-        list(
-          session.teams[
-            session.winner === "A"
-              ? "B"
-              : "A"
-          ],
-          session.captains
-        )
+        list(session.teams[loser], session.captains)
       );
 
       break;
     }
 
     default:
-      throw new Error(
-        "INVALID_PREVIEW_PANEL"
-      );
+      throw new Error("INVALID_PREVIEW_PANEL");
   }
 
   separator(c);
 
   addText(
     c,
-    "-# Ambiente de testes · " +
-    "Nenhum dado real é modificado"
+    "-# Ambiente de testes · Nenhum dado real é modificado"
   );
 
   components.unshift(c);
 
   components.push(
-    new ActionRowBuilder()
-      .addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId("preview_select")
-          .setPlaceholder(
-            "Navegar pelos painéis"
-          )
-          .addOptions(
-            PANELS.map(
-              ([value, label]) => ({
-                value,
-                label,
-                default:
-                  value === session.panel
-              })
-            )
-          )
-      )
+    row(
+      new StringSelectMenuBuilder()
+        .setCustomId("preview_select")
+        .setPlaceholder("Navegar pelos painéis")
+        .addOptions(
+          PANELS.map(([value, label]) => ({
+            value,
+            label,
+            default: value === session.panel
+          }))
+        )
+    )
   );
 
   components.push(
@@ -1096,9 +993,7 @@ async function buildPanel(session) {
   return {
     components,
     files,
-    allowedMentions: {
-      parse: []
-    }
+    allowedMentions: { parse: [] }
   };
 }
 
@@ -1110,8 +1005,7 @@ async function createPreviewMessage(
   type = "queue",
   session = null
 ) {
-  const current =
-    session || newSession();
+  const current = session || newSession();
 
   current.panel = PANELS.some(
     panel => panel[0] === type
@@ -1139,8 +1033,7 @@ const command = new SlashCommandBuilder()
 async function executePreview(interaction) {
   if (!isStaff(interaction)) {
     return interaction.reply({
-      content:
-        "Acesso restrito à Staff.",
+      content: "Acesso restrito à Staff.",
       flags: MessageFlags.Ephemeral
     });
   }
@@ -1155,10 +1048,7 @@ async function executePreview(interaction) {
   );
 
   return interaction.editReply(
-    await createPreviewMessage(
-      "queue",
-      session
-    )
+    await createPreviewMessage("queue", session)
   );
 }
 
@@ -1169,37 +1059,26 @@ async function executePreview(interaction) {
 async function handlePreviewSelect(interaction) {
   if (!isStaff(interaction)) {
     return interaction.reply({
-      content:
-        "Acesso restrito à Staff.",
+      content: "Acesso restrito à Staff.",
+      flags: MessageFlags.Ephemeral
+    });
+  }
+
+  const type = interaction.values?.[0];
+
+  if (!PANELS.some(panel => panel[0] === type)) {
+    return interaction.reply({
+      content: "Painel inválido.",
       flags: MessageFlags.Ephemeral
     });
   }
 
   await interaction.deferUpdate();
 
-  const session = getSession(
-    interaction.user.id
-  );
-
-  const type =
-    interaction.values?.[0];
-
-  if (
-    !PANELS.some(
-      panel => panel[0] === type
-    )
-  ) {
-    return interaction.followUp({
-      content: "Painel inválido.",
-      flags: MessageFlags.Ephemeral
-    });
-  }
+  const session = getSession(interaction.user.id);
 
   return interaction.editReply({
-    ...await createPreviewMessage(
-      type,
-      session
-    ),
+    ...await createPreviewMessage(type, session),
     attachments: []
   });
 }
@@ -1211,45 +1090,38 @@ async function handlePreviewSelect(interaction) {
 async function handlePreviewAction(interaction) {
   if (!isStaff(interaction)) {
     return interaction.reply({
-      content:
-        "Acesso restrito à Staff.",
+      content: "Acesso restrito à Staff.",
       flags: MessageFlags.Ephemeral
     });
   }
 
   await interaction.deferUpdate();
 
-  let session = getSession(
-    interaction.user.id
-  );
+  let session = getSession(interaction.user.id);
 
-  const action =
-    interaction.customId.slice(15);
+  const action = interaction.customId.startsWith(
+    "preview_action:"
+  )
+    ? interaction.customId.slice("preview_action:".length)
+    : interaction.customId.slice("preview_choice:".length);
 
-  const value =
-    interaction.isStringSelectMenu()
-      ? interaction.values?.[0]
-      : null;
+  const values = interaction.isStringSelectMenu()
+    ? interaction.values || []
+    : [];
+
+  const value = values[0] || null;
 
   switch (action) {
     case "reset":
-      session = getSession(
-        interaction.user.id,
-        true
-      );
+      session = getSession(interaction.user.id, true);
       break;
 
     case "join": {
-      const id = PLAYERS.map(
-        player => player.id
-      ).find(id => {
-        return !session.queue.includes(id);
-      });
+      const next = PLAYER_IDS.find(
+        id => !session.queue.includes(id)
+      );
 
-      if (id) {
-        session.queue.push(id);
-      }
-
+      if (next) session.queue.push(next);
       break;
     }
 
@@ -1258,9 +1130,7 @@ async function handlePreviewAction(interaction) {
       break;
 
     case "fill":
-      session.queue = PLAYERS.map(
-        player => player.id
-      );
+      session.queue = [...PLAYER_IDS];
       break;
 
     case "to_ready":
@@ -1271,9 +1141,7 @@ async function handlePreviewAction(interaction) {
 
     case "ready":
       if (
-        PLAYERS.some(
-          player => player.id === value
-        ) &&
+        PLAYER_IDS.includes(value) &&
         !session.ready.includes(value)
       ) {
         session.ready.push(value);
@@ -1281,9 +1149,7 @@ async function handlePreviewAction(interaction) {
       break;
 
     case "ready_all":
-      session.ready = PLAYERS.map(
-        player => player.id
-      );
+      session.ready = [...PLAYER_IDS];
       break;
 
     case "to_captains":
@@ -1293,32 +1159,17 @@ async function handlePreviewAction(interaction) {
       break;
 
     case "captain": {
-      if (
-        !PLAYERS.some(
-          player => player.id === value
-        )
-      ) {
-        break;
-      }
+      if (!PLAYER_IDS.includes(value)) break;
 
-      const voter = PLAYERS.map(
-        player => player.id
-      ).find(id => {
-        return !Object.hasOwn(
-          session.votes,
-          id
-        );
-      });
+      const voter = PLAYER_IDS.find(
+        id => !Object.hasOwn(session.votes, id)
+      );
 
       if (voter) {
         session.votes[voter] = value;
       }
 
-      if (
-        Object.keys(
-          session.votes
-        ).length === 10
-      ) {
+      if (Object.keys(session.votes).length === 10) {
         autoCaptains(session);
       }
 
@@ -1330,51 +1181,27 @@ async function handlePreviewAction(interaction) {
       break;
 
     case "to_draft":
-      if (
-        session.captains.length === 2
-      ) {
+      if (session.captains.length === 2) {
         session.panel = "draft";
       }
       break;
 
-    case "draft": {
-      ensureDraft(session);
-
-      if (
-        availableDraft(session).includes(
-          value
-        )
-      ) {
-        session.teams[
-          currentDraftTeam(session)
-        ].push(value);
-
-        session.draftStep++;
-      }
-
+    case "draft":
+      applyDraftPicks(session, values);
       break;
-    }
 
     case "draft_auto":
       ensureTeams(session);
       break;
 
     case "to_maps":
-      if (
-        !availableDraft(session).length
-      ) {
+      if (!currentDraftRound(session)) {
         session.panel = "maps";
       }
       break;
 
     case "map": {
-      const available = MAP_POOL.filter(
-        map => {
-          return !session.bans.some(
-            ban => ban.map === map
-          );
-        }
-      );
+      const available = availableMaps(session);
 
       if (
         !session.selectedMap &&
@@ -1397,15 +1224,11 @@ async function handlePreviewAction(interaction) {
       break;
     }
 
-    case "map_auto": {
+    case "map_auto":
       while (session.bans.length < 8) {
-        const map = MAP_POOL.find(
-          item => {
-            return !session.bans.some(
-              ban => ban.map === item
-            );
-          }
-        );
+        const map = availableMaps(session)[0];
+
+        if (!map) break;
 
         session.bans.push({
           map,
@@ -1418,7 +1241,6 @@ async function handlePreviewAction(interaction) {
 
       ensureMap(session);
       break;
-    }
 
     case "to_side":
       if (session.selectedMap) {
@@ -1442,9 +1264,7 @@ async function handlePreviewAction(interaction) {
 
     case "winner_A":
     case "winner_B":
-      session.winner =
-        action.slice(-1);
-
+      session.winner = action.slice(-1);
       session.reported = true;
       session.disputed = false;
       session.panel = "confirm";
@@ -1461,9 +1281,7 @@ async function handlePreviewAction(interaction) {
 
     case "staff_A":
     case "staff_B":
-      session.winner =
-        action.slice(-1);
-
+      session.winner = action.slice(-1);
       session.finished = true;
       session.panel = "result";
       break;
@@ -1472,6 +1290,7 @@ async function handlePreviewAction(interaction) {
       session.reported = false;
       session.disputed = false;
       session.winner = null;
+      session.finished = false;
       session.panel = "match";
       break;
 
