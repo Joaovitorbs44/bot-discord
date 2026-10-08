@@ -1,8 +1,12 @@
 
 const {
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
   ActionRowBuilder,
-  StringSelectMenuBuilder
+  StringSelectMenuBuilder,
+  MessageFlags
 } = require("discord.js");
 
 const db = require("../database/database");
@@ -31,6 +35,11 @@ const MAP_POOL = [
 
 const BAN_TIMEOUT_SECONDS =
   config.matchmaking?.mapBanSeconds || 30;
+
+const COLORS = {
+  primary: 0xFF3D2C,
+  success: 0x278451
+};
 
 // ==========================================
 // ESTADO
@@ -66,6 +75,14 @@ function getSession() {
   return queueState.getActiveSession();
 }
 
+function safeText(value) {
+  return String(value || "—")
+    .replace(/\\/g, "\\\\")
+    .replace(/([*_~`|])/g, "\\$1")
+    .replace(/@/g, "@\u200b")
+    .slice(0, 80);
+}
+
 function clearBanTimer() {
   if (banTimeout) {
     clearTimeout(banTimeout);
@@ -76,7 +93,11 @@ function clearBanTimer() {
 function scheduleBanTimeout() {
   clearBanTimer();
 
-  if (!vetoActive || !banDeadline) {
+  if (
+    !vetoActive ||
+    vetoFinishing ||
+    !banDeadline
+  ) {
     return;
   }
 
@@ -86,7 +107,7 @@ function scheduleBanTimeout() {
   );
 
   banTimeout = setTimeout(() => {
-    handleMapVetoTimeout().catch((error) => {
+    handleMapVetoTimeout().catch(error => {
       console.error(
         "Erro no timeout do veto:",
         error
@@ -94,6 +115,10 @@ function scheduleBanTimeout() {
     });
   }, remaining);
 }
+
+// ==========================================
+// PERSISTÊNCIA
+// ==========================================
 
 function saveMapVetoState() {
   const session = getSession();
@@ -176,7 +201,7 @@ async function startMapVeto(
 
   if (
     new Set(
-      allPlayers.map((player) => player.discordId)
+      allPlayers.map(player => player.discordId)
     ).size !== config.matchmaking.requiredPlayers
   ) {
     throw new Error("INVALID_MAP_VETO_PLAYERS");
@@ -184,19 +209,25 @@ async function startMapVeto(
 
   if (
     !teams.teamA.some(
-      (player) => player.discordId === firstCaptain.discordId
+      player =>
+        player.discordId === firstCaptain.discordId
     ) ||
     !teams.teamB.some(
-      (player) => player.discordId === secondCaptain.discordId
+      player =>
+        player.discordId === secondCaptain.discordId
     )
   ) {
-    throw new Error("MAP_VETO_CAPTAIN_NOT_IN_TEAM");
+    throw new Error(
+      "MAP_VETO_CAPTAIN_NOT_IN_TEAM"
+    );
   }
 
   const session = getSession();
 
   if (!session) {
-    throw new Error("MAP_VETO_SESSION_NOT_FOUND");
+    throw new Error(
+      "MAP_VETO_SESSION_NOT_FOUND"
+    );
   }
 
   const channel = await interaction.client.channels.fetch(
@@ -204,7 +235,9 @@ async function startMapVeto(
   );
 
   if (!channel?.isTextBased() || !channel.send) {
-    throw new Error("INVALID_MAP_VETO_CHANNEL");
+    throw new Error(
+      "INVALID_MAP_VETO_CHANNEL"
+    );
   }
 
   captainA = firstCaptain;
@@ -235,7 +268,10 @@ async function startMapVeto(
         stage = 'map_veto',
         updated_at = ?
       WHERE id = ?
-    `).run(Date.now(), session.id);
+    `).run(
+      Date.now(),
+      session.id
+    );
 
     saveMapVetoState();
 
@@ -253,7 +289,7 @@ async function startMapVeto(
       });
     } catch (error) {
       console.warn(
-        "Não foi possível anunciar canal do veto:",
+        "Não foi possível anunciar o canal do veto:",
         error.message
       );
     }
@@ -264,87 +300,131 @@ async function startMapVeto(
 }
 
 // ==========================================
-// PAINEL
+// PAINEL COMPONENTS V2
 // ==========================================
 
 function createMapVetoPanel() {
   if (!vetoActive) {
-    throw new Error("MAP_VETO_NOT_ACTIVE");
+    throw new Error(
+      "MAP_VETO_NOT_ACTIVE"
+    );
   }
 
   const captain =
-    currentCaptain === "A" ? captainA : captainB;
+    currentCaptain === "A"
+      ? captainA
+      : captainB;
 
   if (!captain) {
-    throw new Error("INVALID_CURRENT_MAP_VETO_CAPTAIN");
+    throw new Error(
+      "INVALID_CURRENT_MAP_VETO_CAPTAIN"
+    );
   }
-
-  const bannedList = bannedMaps.length
-    ? bannedMaps.map(
-        (ban, index) =>
-          `**${index + 1}.** ❌ ${ban.map} — ${ban.captain.nickname}` +
-          (ban.automatic ? " *(automático)*" : "")
-      ).join("\n")
-    : "Nenhum mapa banido.";
-
-  const availableList = availableMaps.length
-    ? availableMaps.map(
-        (map) => `• ${map}`
-      ).join("\n")
-    : "Nenhum mapa disponível.";
 
   const deadline = banDeadline
     ? `<t:${Math.ceil(banDeadline / 1000)}:R>`
     : `${BAN_TIMEOUT_SECONDS}s`;
 
-  const embed = new EmbedBuilder()
-    .setTitle("Veto de mapas")
-    .setDescription(
-      `É a vez de <@${captain.discordId}> banir um mapa.\n\n` +
-      `⏱️ Tempo restante: **${deadline}**.\n` +
-      "Se o tempo acabar, um mapa será banido automaticamente."
+  const availableList = availableMaps.length
+    ? availableMaps.map(
+        map => `• ${safeText(map)}`
+      ).join("\n")
+    : "Nenhum mapa disponível.";
+
+  const bannedList = bannedMaps.length
+    ? bannedMaps.map((ban, index) =>
+        `**${String(index + 1).padStart(2, "0")}.** ` +
+        `❌ ${safeText(ban.map)} · ` +
+        `Time ${ban.captainTeam}` +
+        (ban.automatic ? " *(automático)*" : "")
+      ).join("\n")
+    : "Nenhum mapa banido.";
+
+  const container = new ContainerBuilder()
+    .setAccentColor(COLORS.primary)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "## INVISIXTATIONAL\n" +
+        "### VETO DE MAPAS · MELHOR DE 1"
+      )
     )
-    .addFields(
-      {
-        name: "Mapas disponíveis",
-        value: availableList,
-        inline: false
-      },
-      {
-        name: "Banimentos",
-        value: bannedList,
-        inline: false
-      }
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
     )
-    .setFooter({
-      text:
-        `${availableMaps.length} mapas restantes • Capitão ${currentCaptain}`
-    });
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**Rodada:** ${bannedMaps.length + 1}/${MAP_POOL.length - 1}\n` +
+        `**Vez de banir:** <@${captain.discordId}>\n` +
+        `**Tempo restante:** ${deadline}\n` +
+        `**Mapas disponíveis:** ${availableMaps.length}`
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### Mapas disponíveis\n${availableList}`
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### Histórico de banimentos\n${bannedList}`
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# Se o tempo terminar, um mapa será banido automaticamente."
+      )
+    );
 
   if (availableMaps.length <= 1) {
     return {
-      embeds: [embed],
-      components: []
+      content: null,
+      embeds: [],
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { parse: [] }
     };
   }
 
   const select = new StringSelectMenuBuilder()
     .setCustomId("map_veto")
-    .setPlaceholder("Escolha um mapa para banir")
+    .setPlaceholder(
+      "Selecione um mapa para banir"
+    )
     .setMinValues(1)
     .setMaxValues(1)
     .addOptions(
-      availableMaps.map((map) => ({
+      availableMaps.map(map => ({
         label: map,
         value: map
       }))
     );
 
   return {
-    embeds: [embed],
+    content: null,
+    embeds: [],
     components: [
+      container,
       new ActionRowBuilder().addComponents(select)
-    ]
+    ],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] }
   };
 }
 
@@ -358,7 +438,9 @@ function applyBan(map, automatic = false) {
   }
 
   const captain =
-    currentCaptain === "A" ? captainA : captainB;
+    currentCaptain === "A"
+      ? captainA
+      : captainB;
 
   bannedMaps.push({
     map,
@@ -368,7 +450,7 @@ function applyBan(map, automatic = false) {
   });
 
   availableMaps = availableMaps.filter(
-    (item) => item !== map
+    item => item !== map
   );
 
   if (availableMaps.length === 1) {
@@ -392,38 +474,50 @@ function applyBan(map, automatic = false) {
 async function handleMapVeto(interaction) {
   if (!vetoActive || vetoFinishing) {
     return interaction.reply({
-      content: "Não existe um veto de mapas ativo.",
-      ephemeral: true
+      content:
+        "Não existe um veto de mapas ativo.",
+      flags: MessageFlags.Ephemeral
     });
   }
 
   const captain =
-    currentCaptain === "A" ? captainA : captainB;
+    currentCaptain === "A"
+      ? captainA
+      : captainB;
 
-  if (interaction.user.id !== captain.discordId) {
+  if (
+    interaction.user.id !==
+    captain.discordId
+  ) {
     return interaction.reply({
       content:
-        `Agora é a vez de **${captain.nickname}** banir um mapa.`,
-      ephemeral: true
+        `Agora é a vez de **${safeText(captain.nickname)}** banir um mapa.`,
+      flags: MessageFlags.Ephemeral
     });
   }
 
   if (Date.now() >= banDeadline) {
     await interaction.reply({
-      content: "O tempo para banir terminou.",
-      ephemeral: true
+      content:
+        "O tempo para banir terminou.",
+      flags: MessageFlags.Ephemeral
     });
 
     await handleMapVetoTimeout();
     return;
   }
 
-  const selected = interaction.values[0];
+  const selected =
+    interaction.values[0];
 
-  if (!selected || !availableMaps.includes(selected)) {
+  if (
+    !selected ||
+    !availableMaps.includes(selected)
+  ) {
     return interaction.reply({
-      content: "Esse mapa não está mais disponível.",
-      ephemeral: true
+      content:
+        "Esse mapa não está mais disponível.",
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -452,7 +546,10 @@ async function handleMapVetoTimeout() {
     return;
   }
 
-  if (Date.now() < banDeadline) {
+  if (
+    banDeadline &&
+    Date.now() < banDeadline
+  ) {
     scheduleBanTimeout();
     return;
   }
@@ -464,13 +561,16 @@ async function handleMapVetoTimeout() {
   clearBanTimer();
 
   const captain =
-    currentCaptain === "A" ? captainA : captainB;
+    currentCaptain === "A"
+      ? captainA
+      : captainB;
 
   const randomIndex = Math.floor(
     Math.random() * availableMaps.length
   );
 
-  const selected = availableMaps[randomIndex];
+  const selected =
+    availableMaps[randomIndex];
 
   applyBan(selected, true);
 
@@ -514,13 +614,17 @@ async function handleMapVetoTimeout() {
 // FINALIZAR VETO
 // ==========================================
 
-async function finishMapVeto(interaction = null) {
+async function finishMapVeto(
+  interaction = null
+) {
   if (!vetoActive || vetoFinishing) {
     return;
   }
 
   if (availableMaps.length !== 1) {
-    throw new Error("INVALID_MAP_VETO_RESULT");
+    throw new Error(
+      "INVALID_MAP_VETO_RESULT"
+    );
   }
 
   vetoFinishing = true;
@@ -539,9 +643,14 @@ async function finishMapVeto(interaction = null) {
 
   const session = getSession();
 
-  if (!session || session.id !== vetoSessionId) {
+  if (
+    !session ||
+    session.id !== vetoSessionId
+  ) {
     vetoFinishing = false;
-    throw new Error("MAP_VETO_SESSION_LOST");
+    throw new Error(
+      "MAP_VETO_SESSION_LOST"
+    );
   }
 
   db.prepare(`
@@ -561,41 +670,11 @@ async function finishMapVeto(interaction = null) {
     session.id
   );
 
-  const bannedList = bannedMaps.map(
-    (ban, index) =>
-      `**${index + 1}.** ❌ ${ban.map} — ${ban.captain.nickname}` +
-      (ban.automatic ? " *(automático)*" : "")
-  ).join("\n");
-
-  const finalPanel = {
-    embeds: [
-      new EmbedBuilder()
-        .setTitle("Mapa definido")
-        .setDescription(
-          `A partida será disputada em **${selectedMap}**.`
-        )
-        .addFields(
-          {
-            name: "Mapa escolhido",
-            value: `🗺️ **${selectedMap}**`,
-            inline: false
-          },
-          {
-            name: "Vetos",
-            value: bannedList || "Nenhum.",
-            inline: false
-          }
-        )
-        .setFooter({
-          text: "Escolha de lado iniciada"
-        })
-    ],
-    components: []
-  };
-
   if (vetoMessage) {
     try {
-      await vetoMessage.edit(finalPanel);
+      await vetoMessage.edit(
+        createFinishedMapVetoPanel()
+      );
     } catch (error) {
       console.error(
         "Erro ao finalizar painel de veto:",
@@ -606,23 +685,27 @@ async function finishMapVeto(interaction = null) {
 
   const context = interaction || {
     client: vetoClient,
-    followUp: async (payload) => {
-      const channel = await vetoClient.channels.fetch(
-        config.discord.mapVetoChannelId
-      );
+    followUp: async payload => {
+      const channel =
+        await vetoClient.channels.fetch(
+          config.discord.mapVetoChannelId
+        );
 
       return channel.send(payload);
     }
   };
 
   try {
-    await startSideChoice(context, {
-      map: vetoResult.map,
-      captainA: vetoResult.captainA,
-      captainB: vetoResult.captainB,
-      teamA: [...vetoResult.teamA],
-      teamB: [...vetoResult.teamB]
-    });
+    await startSideChoice(
+      context,
+      {
+        map: vetoResult.map,
+        captainA: vetoResult.captainA,
+        captainB: vetoResult.captainB,
+        teamA: [...vetoResult.teamA],
+        teamB: [...vetoResult.teamB]
+      }
+    );
 
     resetMapVeto();
   } catch (error) {
@@ -636,13 +719,78 @@ async function finishMapVeto(interaction = null) {
 }
 
 // ==========================================
+// PAINEL FINAL
+// ==========================================
+
+function createFinishedMapVetoPanel() {
+  const bannedList = bannedMaps.length
+    ? bannedMaps.map((ban, index) =>
+        `**${index + 1}.** ` +
+        `${safeText(ban.map)} · Time ${ban.captainTeam}` +
+        (ban.automatic ? " *(automático)*" : "")
+      ).join("\n")
+    : "Nenhum.";
+
+  const container = new ContainerBuilder()
+    .setAccentColor(COLORS.success)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "## INVISIXTATIONAL\n" +
+        "### MAPA DEFINIDO"
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### ${safeText(selectedMap)}\n` +
+        "O mapa da partida foi definido."
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**Histórico de vetos**\n${bannedList}`
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# Próxima etapa: escolha de lado."
+      )
+    );
+
+  return {
+    content: null,
+    embeds: [],
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] }
+  };
+}
+
+// ==========================================
 // RECUPERAÇÃO
 // ==========================================
 
 async function restoreMapVeto(client) {
   const session = getSession();
 
-  if (!session || session.stage !== "map_veto") {
+  if (
+    !session ||
+    session.stage !== "map_veto"
+  ) {
     return false;
   }
 
@@ -683,53 +831,74 @@ async function restoreMapVeto(client) {
   availableMaps = state.availableMaps;
   bannedMaps = state.bannedMaps;
 
-  currentCaptain = state.currentCaptain || "A";
-  selectedMap = state.selectedMap || null;
+  currentCaptain =
+    state.currentCaptain || "A";
+
+  selectedMap =
+    state.selectedMap || null;
 
   vetoSessionId = session.id;
   vetoClient = client;
-  banDeadline = session.deadline_at;
+  banDeadline =
+    session.deadline_at;
 
   vetoActive = true;
   vetoFinishing = false;
 
   const channelId =
-    state.channelId || config.discord.mapVetoChannelId;
+    state.channelId ||
+    config.discord.mapVetoChannelId;
 
-  const channel = await client.channels.fetch(channelId);
+  const channel =
+    await client.channels.fetch(
+      channelId
+    );
 
-  if (!channel?.isTextBased() || !channel.send) {
-    throw new Error("INVALID_MAP_VETO_RESTORE_CHANNEL");
+  if (
+    !channel?.isTextBased() ||
+    !channel.send
+  ) {
+    throw new Error(
+      "INVALID_MAP_VETO_RESTORE_CHANNEL"
+    );
   }
 
-  if (state.messageId && channel.messages) {
+  if (
+    state.messageId &&
+    channel.messages
+  ) {
     try {
-      vetoMessage = await channel.messages.fetch(
-        state.messageId
-      );
+      vetoMessage =
+        await channel.messages.fetch(
+          state.messageId
+        );
     } catch {
       vetoMessage = null;
     }
   }
 
+  if (availableMaps.length === 1) {
+    if (vetoMessage) {
+      await vetoMessage.edit(
+        createFinishedMapVetoPanel()
+      );
+    }
+
+    await finishMapVeto();
+    return true;
+  }
+
   if (!vetoMessage) {
-    vetoMessage = await channel.send(
-      createMapVetoPanel()
-    );
+    vetoMessage =
+      await channel.send(
+        createMapVetoPanel()
+      );
 
     saveMapVetoState();
   } else {
     await vetoMessage.edit(
       createMapVetoPanel()
     );
-  }
-
-  if (availableMaps.length === 1) {
-    console.warn(
-      "Veto recuperado na transição final."
-    );
-
-    return true;
   }
 
   if (!banDeadline) {
@@ -740,7 +909,9 @@ async function restoreMapVeto(client) {
     return true;
   }
 
-  if (Date.now() >= banDeadline) {
+  if (
+    Date.now() >= banDeadline
+  ) {
     await handleMapVetoTimeout();
   } else {
     scheduleBanTimeout();
