@@ -1,18 +1,35 @@
 
 const {
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  PermissionFlagsBits
+  PermissionFlagsBits,
+  MessageFlags
 } = require("discord.js");
 
 const db = require("../database/database");
 const config = require("../config/config");
-const { ensurePlayerInSeason } = require("../services/seasonService");
+const {
+  ensurePlayerInSeason
+} = require("../services/seasonService");
 
 const WIN_POINTS = config.matchmaking.winPoints;
 const LOSS_POINTS = config.matchmaking.lossPoints;
+
+const COLORS = {
+  primary: 0xFF3D2C,
+  success: 0x278451,
+  warning: 0xD99B32,
+  neutral: 0x454650
+};
+
+// ==========================================
+// UTILITÁRIOS
+// ==========================================
 
 function getWinPoints() {
   return WIN_POINTS;
@@ -22,11 +39,20 @@ function getLossPoints() {
   return LOSS_POINTS;
 }
 
+function safeText(value, max = 100) {
+  return String(value ?? "—")
+    .replace(/\\/g, "\\\\")
+    .replace(/([*_~`|])/g, "\\$1")
+    .replace(/@/g, "@\u200b")
+    .slice(0, max);
+}
+
 function getMatchByCode(code) {
   if (!code) return null;
 
   return db.prepare(`
-    SELECT * FROM matches WHERE match_code = ?
+    SELECT * FROM matches
+    WHERE match_code = ?
   `).get(code) || null;
 }
 
@@ -37,9 +63,11 @@ function getCustomIdPart(id, index) {
 function getStatusMessage(status) {
   const messages = {
     playing: "Essa partida ainda está em andamento.",
-    pending_confirmation: "Já existe um resultado aguardando confirmação.",
+    pending_confirmation:
+      "Já existe um resultado aguardando confirmação.",
     finished: "Essa partida já foi finalizada.",
-    disputed: "Essa partida está sendo analisada pela Staff.",
+    disputed:
+      "Essa partida está sendo analisada pela Staff.",
     cancelled: "Essa partida foi cancelada."
   };
 
@@ -57,7 +85,8 @@ function hasStaffRole(interaction) {
     staffRoleId &&
     (
       roles?.cache?.has?.(staffRoleId) ||
-      (Array.isArray(roles) && roles.includes(staffRoleId))
+      (Array.isArray(roles) &&
+        roles.includes(staffRoleId))
     )
   );
 
@@ -81,7 +110,101 @@ function getOtherCaptain(match, userId) {
   return null;
 }
 
-function createFinishedMatchEmbed(match, result, options = {}) {
+// ==========================================
+// COMPONENTS V2
+// ==========================================
+
+function createPanel({
+  code,
+  title,
+  description,
+  sections = [],
+  footer = "",
+  color = COLORS.primary,
+  buttons = [],
+  ephemeral = false
+}) {
+  const container = new ContainerBuilder()
+    .setAccentColor(color)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "## INVISIXTATIONAL\n" +
+        `### ${safeText(title, 150)}`
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setDivider(true)
+        .setSpacing(SeparatorSpacingSize.Small)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**Partida:** ${safeText(code)}\n\n` +
+        description
+      )
+    );
+
+  for (const section of sections) {
+    container.addSeparatorComponents(
+      new SeparatorBuilder()
+        .setDivider(true)
+        .setSpacing(SeparatorSpacingSize.Small)
+    );
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**${section.title}**\n${section.value}`
+      )
+    );
+  }
+
+  if (footer) {
+    container.addSeparatorComponents(
+      new SeparatorBuilder()
+        .setDivider(true)
+        .setSpacing(SeparatorSpacingSize.Small)
+    );
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ${footer}`
+      )
+    );
+  }
+
+  return {
+    components: [
+      container,
+      ...buttons
+    ],
+    flags:
+      MessageFlags.IsComponentsV2 |
+      (ephemeral ? MessageFlags.Ephemeral : 0),
+    allowedMentions: {
+      parse: []
+    }
+  };
+}
+
+function createButtons(definitions) {
+  return [
+    new ActionRowBuilder().addComponents(
+      definitions.map(item =>
+        new ButtonBuilder()
+          .setCustomId(item.id)
+          .setLabel(item.label)
+          .setStyle(item.style)
+          .setEmoji(item.emoji)
+      )
+    )
+  ];
+}
+
+function createFinishedMatchPanel(
+  match,
+  result,
+  options = {}
+) {
   const winners = result.players.filter(
     player => player.team === result.winnerTeam
   );
@@ -90,42 +213,49 @@ function createFinishedMatchEmbed(match, result, options = {}) {
     player => player.team !== result.winnerTeam
   );
 
-  const list = players => players.map(
-    player => `• <@${player.discord_id}> — ${player.r6_nickname}`
-  ).join("\n") || "—";
+  const playerList = players =>
+    players.map(player =>
+      `• <@${player.discord_id}> · ` +
+      safeText(player.r6_nickname)
+    ).join("\n") || "Nenhum jogador.";
 
-  const embed = new EmbedBuilder()
-    .setTitle(`Partida ${match.match_code} finalizada`)
-    .setDescription(`O **Time ${result.winnerTeam}** venceu a partida.`)
-    .addFields(
-      {
-        name: `Vencedores • +${WIN_POINTS}`,
-        value: list(winners)
-      },
-      {
-        name: `Derrotados • ${LOSS_POINTS}`,
-        value: list(losers)
-      }
-    )
-    .setTimestamp();
+  const sections = [
+    {
+      title: `🏆 VENCEDORES · +${WIN_POINTS} PONTOS`,
+      value: playerList(winners)
+    },
+    {
+      title: `DERROTADOS · ${LOSS_POINTS} PONTOS`,
+      value: playerList(losers)
+    }
+  ];
 
   if (options.staffResolved) {
-    embed.addFields({
-      name: "Decisão da Staff",
-      value: `Resultado definido por <@${options.resolvedBy}>.`
-    });
-
-    embed.setFooter({
-      text: "Resultado definido após contestação."
-    });
-  } else {
-    embed.setFooter({
-      text: "Resultado confirmado pelos dois capitães."
+    sections.push({
+      title: "DECISÃO DA STAFF",
+      value:
+        `Resultado definido por <@${options.resolvedBy}>.`
     });
   }
 
-  return embed;
+  return createPanel({
+    code: match.match_code,
+    title: "PARTIDA FINALIZADA",
+    description:
+      `🏆 **Time ${result.winnerTeam} venceu!**\n` +
+      `**Mapa:** ${safeText(match.map)}\n` +
+      "**Status:** Finalizada",
+    sections,
+    color: COLORS.success,
+    footer: options.staffResolved
+      ? "Resultado definido após contestação."
+      : "Resultado confirmado pelos capitães."
+  });
 }
+
+// ==========================================
+// AUDITORIA STAFF
+// ==========================================
 
 function recordStaffAction({
   staffId,
@@ -168,16 +298,22 @@ function applyMatchResult({
     throw new Error("INVALID_WINNER");
   }
 
-  if (!["pending_confirmation", "disputed"].includes(allowedStatus)) {
+  if (
+    !["pending_confirmation", "disputed"]
+      .includes(allowedStatus)
+  ) {
     throw new Error("INVALID_RESULT_STATUS");
   }
 
   return db.transaction(() => {
     const match = db.prepare(`
-      SELECT * FROM matches WHERE id = ?
+      SELECT * FROM matches
+      WHERE id = ?
     `).get(matchId);
 
-    if (!match) throw new Error("MATCH_NOT_FOUND");
+    if (!match) {
+      throw new Error("MATCH_NOT_FOUND");
+    }
 
     if (match.status !== allowedStatus) {
       throw new Error("RESULT_ALREADY_PROCESSED");
@@ -194,15 +330,20 @@ function applyMatchResult({
         p.r6_nickname,
         p.r6_rank
       FROM match_players mp
-      INNER JOIN players p ON p.discord_id = mp.discord_id
+      INNER JOIN players p
+        ON p.discord_id = mp.discord_id
       WHERE mp.match_id = ?
     `).all(matchId);
 
-    const uniqueIds = new Set(players.map(p => p.discord_id));
+    const uniqueIds = new Set(
+      players.map(player => player.discord_id)
+    );
 
     if (
-      players.length !== config.matchmaking.requiredPlayers ||
-      uniqueIds.size !== config.matchmaking.requiredPlayers ||
+      players.length !==
+        config.matchmaking.requiredPlayers ||
+      uniqueIds.size !==
+        config.matchmaking.requiredPlayers ||
       players.filter(p => p.team === "A").length !==
         config.matchmaking.teamSize ||
       players.filter(p => p.team === "B").length !==
@@ -235,7 +376,8 @@ function applyMatchResult({
           wins = wins + 1,
           matches_played = matches_played + 1,
           updated_at = CURRENT_TIMESTAMP
-      WHERE season_id = ? AND player_id = ?
+      WHERE season_id = ?
+        AND player_id = ?
     `);
 
     const seasonLoserUpdate = db.prepare(`
@@ -244,21 +386,33 @@ function applyMatchResult({
           losses = losses + 1,
           matches_played = matches_played + 1,
           updated_at = CURRENT_TIMESTAMP
-      WHERE season_id = ? AND player_id = ?
+      WHERE season_id = ?
+        AND player_id = ?
     `);
 
     for (const player of players) {
-      ensurePlayerInSeason(player.player_id, match.season_id);
+      ensurePlayerInSeason(
+        player.player_id,
+        match.season_id
+      );
 
       if (player.team === winnerTeam) {
-        winnerUpdate.run(WIN_POINTS, player.player_id);
+        winnerUpdate.run(
+          WIN_POINTS,
+          player.player_id
+        );
+
         seasonWinnerUpdate.run(
           WIN_POINTS,
           match.season_id,
           player.player_id
         );
       } else {
-        loserUpdate.run(LOSS_POINTS, player.player_id);
+        loserUpdate.run(
+          LOSS_POINTS,
+          player.player_id
+        );
+
         seasonLoserUpdate.run(
           LOSS_POINTS,
           match.season_id,
@@ -274,8 +428,14 @@ function applyMatchResult({
           result_confirmed_by = ?,
           result_confirmed_at = CURRENT_TIMESTAMP,
           finished_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND status = ?
-    `).run(winnerTeam, confirmedBy, matchId, allowedStatus);
+      WHERE id = ?
+        AND status = ?
+    `).run(
+      winnerTeam,
+      confirmedBy,
+      matchId,
+      allowedStatus
+    );
 
     if (updated.changes !== 1) {
       throw new Error("RESULT_ALREADY_PROCESSED");
@@ -293,13 +453,19 @@ function applyMatchResult({
 // CANCELAR PARTIDA
 // ==========================================
 
-function cancelMatch({ matchId, cancelledBy = null }) {
+function cancelMatch({
+  matchId,
+  cancelledBy = null
+}) {
   return db.transaction(() => {
     const match = db.prepare(`
-      SELECT * FROM matches WHERE id = ?
+      SELECT * FROM matches
+      WHERE id = ?
     `).get(matchId);
 
-    if (!match) throw new Error("MATCH_NOT_FOUND");
+    if (!match) {
+      throw new Error("MATCH_NOT_FOUND");
+    }
 
     if (match.status !== "disputed") {
       throw new Error("RESULT_ALREADY_PROCESSED");
@@ -312,7 +478,8 @@ function cancelMatch({ matchId, cancelledBy = null }) {
           result_confirmed_by = ?,
           result_confirmed_at = CURRENT_TIMESTAMP,
           finished_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND status = 'disputed'
+      WHERE id = ?
+        AND status = 'disputed'
     `).run(cancelledBy, matchId);
 
     if (updated.changes !== 1) {
@@ -335,60 +502,64 @@ async function handleResultReport(interaction) {
   if (!match) {
     return interaction.reply({
       content: "Essa partida não foi encontrada.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
   if (match.status !== "playing") {
     return interaction.reply({
       content: getStatusMessage(match.status),
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
-  const otherCaptain = getOtherCaptain(match, interaction.user.id);
+  const otherCaptain = getOtherCaptain(
+    match,
+    interaction.user.id
+  );
 
   if (!otherCaptain) {
     return interaction.reply({
-      content: "Somente os capitães podem informar o resultado.",
-      ephemeral: true
+      content:
+        "Somente os capitães podem informar o resultado.",
+      flags: MessageFlags.Ephemeral
     });
   }
 
-  const buttons = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`result_winner:${match.match_code}:A`)
-      .setLabel("Time A venceu")
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId(`result_winner:${match.match_code}:B`)
-      .setLabel("Time B venceu")
-      .setStyle(ButtonStyle.Primary)
-  );
+  const buttons = createButtons([
+    {
+      id: `result_winner:${match.match_code}:A`,
+      label: "Time A venceu",
+      emoji: "🏆",
+      style: ButtonStyle.Primary
+    },
+    {
+      id: `result_winner:${match.match_code}:B`,
+      label: "Time B venceu",
+      emoji: "🏆",
+      style: ButtonStyle.Secondary
+    }
+  ]);
 
-  return interaction.reply({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle(`Resultado ${match.match_code}`)
-        .setDescription("Informe qual time venceu a partida.")
-        .addFields(
-          { name: "Mapa", value: match.map, inline: true },
-          {
-            name: "Você é",
-            value:
-              interaction.user.id === match.captain_a_discord_id
-                ? "Capitão do Time A"
-                : "Capitão do Time B",
-            inline: true
-          }
-        )
-        .setFooter({
-          text: "O outro capitão deverá confirmar o resultado."
-        })
-    ],
-    components: [buttons],
-    ephemeral: true
-  });
+  return interaction.reply(
+    createPanel({
+      code: match.match_code,
+      title: "INFORMAR RESULTADO",
+      description:
+        "Selecione o time vencedor da partida.\n\n" +
+        `**Mapa:** ${safeText(match.map)}\n` +
+        `**Seu time:** ${
+          interaction.user.id ===
+          match.captain_a_discord_id
+            ? "A"
+            : "B"
+        }`,
+      footer:
+        "O outro capitão deverá confirmar o resultado.",
+      buttons,
+      ephemeral: true
+    })
+  );
 }
 
 // ==========================================
@@ -396,13 +567,18 @@ async function handleResultReport(interaction) {
 // ==========================================
 
 async function handleWinnerSelection(interaction) {
-  const code = getCustomIdPart(interaction.customId, 1);
-  const winner = getCustomIdPart(interaction.customId, 2);
+  const code = getCustomIdPart(
+    interaction.customId, 1
+  );
+
+  const winner = getCustomIdPart(
+    interaction.customId, 2
+  );
 
   if (!["A", "B"].includes(winner)) {
     return interaction.reply({
       content: "O vencedor informado é inválido.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -411,23 +587,27 @@ async function handleWinnerSelection(interaction) {
   if (!match) {
     return interaction.reply({
       content: "Essa partida não foi encontrada.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
   if (match.status !== "playing") {
     return interaction.reply({
       content: getStatusMessage(match.status),
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
-  const otherCaptain = getOtherCaptain(match, interaction.user.id);
+  const otherCaptain = getOtherCaptain(
+    match,
+    interaction.user.id
+  );
 
   if (!otherCaptain) {
     return interaction.reply({
-      content: "Somente os capitães podem informar o resultado.",
-      ephemeral: true
+      content:
+        "Somente os capitães podem informar o resultado.",
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -437,53 +617,88 @@ async function handleWinnerSelection(interaction) {
         status = 'pending_confirmation',
         result_submitted_by = ?,
         result_submitted_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND status = 'playing'
-  `).run(winner, interaction.user.id, match.id);
-
-  if (updated.changes !== 1) {
-    return interaction.update({
-      content: "O resultado já foi informado.",
-      embeds: [],
-      components: []
-    });
-  }
-
-  await interaction.update({
-    content: `Você informou que o **Time ${winner}** venceu.`,
-    embeds: [],
-    components: []
-  });
-
-  const buttons = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`result_confirm:${code}`)
-      .setLabel("Confirmar")
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`result_dispute:${code}`)
-      .setLabel("Contestar")
-      .setStyle(ButtonStyle.Danger)
+    WHERE id = ?
+      AND status = 'playing'
+  `).run(
+    winner,
+    interaction.user.id,
+    match.id
   );
 
-  return interaction.followUp({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle(`Confirmação de resultado ${code}`)
-        .setDescription(
-          `<@${interaction.user.id}> informou que o ` +
-          `**Time ${winner}** venceu.\n\n` +
-          `<@${otherCaptain}>, confirme ou conteste o resultado.`
-        )
-        .addFields(
-          { name: "Mapa", value: match.map, inline: true },
-          { name: "Resultado", value: `Time ${winner}`, inline: true }
-        )
-        .setFooter({
-          text: "Os pontos só serão aplicados após a confirmação."
-        })
-    ],
-    components: [buttons]
-  });
+  if (updated.changes !== 1) {
+    return interaction.update(
+      createPanel({
+        code,
+        title: "RESULTADO JÁ INFORMADO",
+        description:
+          "Já existe um resultado registrado.",
+        color: COLORS.neutral,
+        ephemeral: true
+      })
+    );
+  }
+
+  await interaction.update(
+    createPanel({
+      code,
+      title: "RESULTADO ENVIADO",
+      description:
+        `Você informou que o **Time ${winner}** venceu.\n\n` +
+        "Aguardando confirmação do outro capitão.",
+      color: COLORS.success,
+      ephemeral: true
+    })
+  );
+
+  const buttons = createButtons([
+    {
+      id: `result_confirm:${code}`,
+      label: "Confirmar",
+      emoji: "✅",
+      style: ButtonStyle.Success
+    },
+    {
+      id: `result_dispute:${code}`,
+      label: "Contestar",
+      emoji: "⚠️",
+      style: ButtonStyle.Danger
+    }
+  ]);
+
+  // A mensagem pública precisa ser enviada ao canal.
+  // Uma resposta a uma interação efêmera permanece efêmera.
+  const channel = interaction.channel;
+
+  if (!channel?.send) {
+    throw new Error(
+      "RESULT_CONFIRMATION_CHANNEL_UNAVAILABLE"
+    );
+  }
+
+  return channel.send(
+    createPanel({
+      code,
+      title: "CONFIRMAÇÃO DE RESULTADO",
+      description:
+        `<@${interaction.user.id}> informou que o ` +
+        `**Time ${winner}** venceu.\n\n` +
+        `<@${otherCaptain}>, confirme ou conteste.`,
+      sections: [
+        {
+          title: "MAPA",
+          value: safeText(match.map)
+        },
+        {
+          title: "RESULTADO INFORMADO",
+          value: `Time ${winner}`
+        }
+      ],
+      footer:
+        "Os pontos serão aplicados somente após a confirmação.",
+      color: COLORS.warning,
+      buttons
+    })
+  );
 }
 
 // ==========================================
@@ -498,14 +713,14 @@ async function handleResultConfirmation(interaction) {
   if (!match) {
     return interaction.reply({
       content: "Essa partida não foi encontrada.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
   if (match.status !== "pending_confirmation") {
     return interaction.reply({
       content: getStatusMessage(match.status),
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -514,17 +729,21 @@ async function handleResultConfirmation(interaction) {
     match.result_submitted_by
   );
 
-  if (!otherCaptain || interaction.user.id !== otherCaptain) {
+  if (
+    !otherCaptain ||
+    interaction.user.id !== otherCaptain
+  ) {
     return interaction.reply({
-      content: "Somente o outro capitão pode confirmar o resultado.",
-      ephemeral: true
+      content:
+        "Somente o outro capitão pode confirmar.",
+      flags: MessageFlags.Ephemeral
     });
   }
 
   if (!["A", "B"].includes(match.winner_team)) {
     return interaction.reply({
       content: "O vencedor armazenado é inválido.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -541,10 +760,9 @@ async function handleResultConfirmation(interaction) {
     return handleResultError(interaction, error);
   }
 
-  return interaction.update({
-    embeds: [createFinishedMatchEmbed(match, result)],
-    components: []
-  });
+  return interaction.update(
+    createFinishedMatchPanel(match, result)
+  );
 }
 
 // ==========================================
@@ -559,14 +777,14 @@ async function handleResultDispute(interaction) {
   if (!match) {
     return interaction.reply({
       content: "Essa partida não foi encontrada.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
   if (match.status !== "pending_confirmation") {
     return interaction.reply({
       content: getStatusMessage(match.status),
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -575,10 +793,14 @@ async function handleResultDispute(interaction) {
     match.result_submitted_by
   );
 
-  if (!otherCaptain || interaction.user.id !== otherCaptain) {
+  if (
+    !otherCaptain ||
+    interaction.user.id !== otherCaptain
+  ) {
     return interaction.reply({
-      content: "Somente o outro capitão pode contestar.",
-      ephemeral: true
+      content:
+        "Somente o outro capitão pode contestar.",
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -587,30 +809,36 @@ async function handleResultDispute(interaction) {
     SET status = 'disputed',
         result_confirmed_by = NULL,
         result_confirmed_at = NULL
-    WHERE id = ? AND status = 'pending_confirmation'
+    WHERE id = ?
+      AND status = 'pending_confirmation'
   `).run(match.id);
 
   if (updated.changes !== 1) {
     return interaction.reply({
-      content: "Não foi possível contestar essa partida.",
-      ephemeral: true
+      content:
+        "Não foi possível contestar essa partida.",
+      flags: MessageFlags.Ephemeral
     });
   }
 
-  await interaction.update({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle(`Partida ${match.match_code} contestada`)
-        .setDescription(
-          `Resultado contestado por <@${interaction.user.id}>.\n\n` +
-          "Nenhum ponto foi aplicado. A Staff deverá analisar."
-        )
-        .setTimestamp()
-    ],
-    components: []
-  });
+  await interaction.update(
+    createPanel({
+      code: match.match_code,
+      title: "RESULTADO CONTESTADO",
+      description:
+        `Contestação registrada por ` +
+        `<@${interaction.user.id}>.\n\n` +
+        "**Nenhum ponto foi aplicado.**\n" +
+        "A Staff deverá analisar a partida.",
+      color: COLORS.warning,
+      footer: "Aguardando decisão administrativa."
+    })
+  );
 
-  return sendDisputeToStaff(interaction, match);
+  return sendDisputeToStaff(
+    interaction,
+    match
+  );
 }
 
 // ==========================================
@@ -619,62 +847,71 @@ async function handleResultDispute(interaction) {
 
 async function sendDisputeToStaff(interaction, match) {
   try {
-    const channel = await interaction.client.channels.fetch(
-      config.discord.staffChannelId
-    );
+    const channel =
+      await interaction.client.channels.fetch(
+        config.discord.staffChannelId
+      );
 
     if (!channel?.isTextBased() || !channel.send) {
       return;
     }
 
-    const buttons = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`staff_result:${match.match_code}:A`)
-        .setLabel("Time A venceu")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId(`staff_result:${match.match_code}:B`)
-        .setLabel("Time B venceu")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId(`staff_cancel:${match.match_code}`)
-        .setLabel("Cancelar partida")
-        .setStyle(ButtonStyle.Danger)
-    );
+    const buttons = createButtons([
+      {
+        id: `staff_result:${match.match_code}:A`,
+        label: "Time A venceu",
+        emoji: "🏆",
+        style: ButtonStyle.Primary
+      },
+      {
+        id: `staff_result:${match.match_code}:B`,
+        label: "Time B venceu",
+        emoji: "🏆",
+        style: ButtonStyle.Secondary
+      },
+      {
+        id: `staff_cancel:${match.match_code}`,
+        label: "Cancelar partida",
+        emoji: "❌",
+        style: ButtonStyle.Danger
+      }
+    ]);
 
-    await channel.send({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle(`Resultado contestado • ${match.match_code}`)
-          .setDescription("Uma partida precisa de análise da Staff.")
-          .addFields(
-            {
-              name: "Resultado informado",
-              value: `Time ${match.winner_team || "—"}`,
-              inline: true
-            },
-            {
-              name: "Informado por",
-              value: `<@${match.result_submitted_by}>`,
-              inline: true
-            },
-            {
-              name: "Contestado por",
-              value: `<@${interaction.user.id}>`,
-              inline: true
-            },
-            {
-              name: "Mapa",
-              value: match.map,
-              inline: true
-            }
-          )
-          .setTimestamp()
-      ],
-      components: [buttons]
-    });
+    await channel.send(
+      createPanel({
+        code: match.match_code,
+        title: "DISPUTA · ANÁLISE STAFF",
+        description:
+          "Uma partida precisa de análise administrativa.",
+        sections: [
+          {
+            title: "RESULTADO INFORMADO",
+            value: `Time ${match.winner_team || "—"}`
+          },
+          {
+            title: "INFORMADO POR",
+            value: `<@${match.result_submitted_by}>`
+          },
+          {
+            title: "CONTESTADO POR",
+            value: `<@${interaction.user.id}>`
+          },
+          {
+            title: "MAPA",
+            value: safeText(match.map)
+          }
+        ],
+        footer:
+          "A decisão será registrada no histórico da Staff.",
+        color: COLORS.warning,
+        buttons
+      })
+    );
   } catch (error) {
-    console.error("Erro ao enviar disputa para Staff:", error);
+    console.error(
+      "Erro ao enviar disputa para Staff:",
+      error
+    );
   }
 }
 
@@ -685,18 +922,24 @@ async function sendDisputeToStaff(interaction, match) {
 async function handleStaffResult(interaction) {
   if (!hasStaffRole(interaction)) {
     return interaction.reply({
-      content: "Você não possui permissão para resolver disputas.",
-      ephemeral: true
+      content:
+        "Você não possui permissão para resolver disputas.",
+      flags: MessageFlags.Ephemeral
     });
   }
 
-  const code = getCustomIdPart(interaction.customId, 1);
-  const winner = getCustomIdPart(interaction.customId, 2);
+  const code = getCustomIdPart(
+    interaction.customId, 1
+  );
+
+  const winner = getCustomIdPart(
+    interaction.customId, 2
+  );
 
   if (!["A", "B"].includes(winner)) {
     return interaction.reply({
       content: "Vencedor inválido.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -705,14 +948,14 @@ async function handleStaffResult(interaction) {
   if (!match) {
     return interaction.reply({
       content: "Essa partida não foi encontrada.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
   if (match.status !== "disputed") {
     return interaction.reply({
       content: getStatusMessage(match.status),
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -732,7 +975,9 @@ async function handleStaffResult(interaction) {
         actionType: "resolve_match_dispute",
         matchId: match.id,
         reason: "Resultado definido pela Staff",
-        details: { winnerTeam: winner }
+        details: {
+          winnerTeam: winner
+        }
       });
 
       return applied;
@@ -741,15 +986,16 @@ async function handleStaffResult(interaction) {
     return handleResultError(interaction, error);
   }
 
-  return interaction.update({
-    embeds: [
-      createFinishedMatchEmbed(match, result, {
+  return interaction.update(
+    createFinishedMatchPanel(
+      match,
+      result,
+      {
         staffResolved: true,
         resolvedBy: interaction.user.id
-      })
-    ],
-    components: []
-  });
+      }
+    )
+  );
 }
 
 // ==========================================
@@ -759,8 +1005,9 @@ async function handleStaffResult(interaction) {
 async function handleStaffCancel(interaction) {
   if (!hasStaffRole(interaction)) {
     return interaction.reply({
-      content: "Você não possui permissão para cancelar disputas.",
-      ephemeral: true
+      content:
+        "Você não possui permissão para cancelar disputas.",
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -771,14 +1018,14 @@ async function handleStaffCancel(interaction) {
   if (!match) {
     return interaction.reply({
       content: "Essa partida não foi encontrada.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
   if (match.status !== "disputed") {
     return interaction.reply({
       content: getStatusMessage(match.status),
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -800,25 +1047,30 @@ async function handleStaffCancel(interaction) {
     return handleResultError(interaction, error);
   }
 
-  return interaction.update({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle(`Partida ${match.match_code} cancelada`)
-        .setDescription(
-          "A Staff cancelou a partida após analisar a contestação."
-        )
-        .addFields(
-          { name: "Mapa", value: match.map, inline: true },
-          { name: "Pontos", value: "Nenhum ponto aplicado.", inline: true },
-          {
-            name: "Resolvido por",
-            value: `<@${interaction.user.id}>`
-          }
-        )
-        .setTimestamp()
-    ],
-    components: []
-  });
+  return interaction.update(
+    createPanel({
+      code: match.match_code,
+      title: "PARTIDA CANCELADA",
+      description:
+        "A Staff cancelou a partida após analisar a contestação.",
+      sections: [
+        {
+          title: "MAPA",
+          value: safeText(match.map)
+        },
+        {
+          title: "PONTUAÇÃO",
+          value: "Nenhum ponto aplicado."
+        },
+        {
+          title: "RESOLVIDO POR",
+          value: `<@${interaction.user.id}>`
+        }
+      ],
+      color: COLORS.neutral,
+      footer: "Decisão registrada no histórico da Staff."
+    })
+  );
 }
 
 // ==========================================
@@ -826,35 +1078,45 @@ async function handleStaffCancel(interaction) {
 // ==========================================
 
 async function handleResultError(interaction, error) {
-  console.error("Erro ao processar resultado:", error);
+  console.error(
+    "Erro ao processar resultado:",
+    error
+  );
 
   const messages = {
-    MATCH_NOT_FOUND: "Essa partida não foi encontrada.",
-    RESULT_ALREADY_PROCESSED: "O resultado já foi processado.",
-    INVALID_WINNER: "O vencedor informado é inválido.",
-    INVALID_MATCH_PLAYERS: "A partida não possui um 5v5 válido.",
-    MATCH_WITHOUT_SEASON: "A partida não possui temporada.",
-    INVALID_RESULT_STATUS: "Status de resultado inválido."
+    MATCH_NOT_FOUND:
+      "Essa partida não foi encontrada.",
+    RESULT_ALREADY_PROCESSED:
+      "O resultado já foi processado.",
+    INVALID_WINNER:
+      "O vencedor informado é inválido.",
+    INVALID_MATCH_PLAYERS:
+      "A partida não possui um 5v5 válido.",
+    MATCH_WITHOUT_SEASON:
+      "A partida não possui temporada.",
+    INVALID_RESULT_STATUS:
+      "Status de resultado inválido."
   };
 
-  const content = messages[error.message] ||
+  const content =
+    messages[error.message] ||
     "Não foi possível processar o resultado da partida.";
 
   if (interaction.replied || interaction.deferred) {
     return interaction.followUp({
       content,
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
   return interaction.reply({
     content,
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
 
 // ==========================================
-// ROTEAMENTO DE RESULTADOS
+// ROTEAMENTO
 // ==========================================
 
 async function handleResultInteraction(interaction) {
@@ -884,6 +1146,10 @@ async function handleResultInteraction(interaction) {
     return handleStaffCancel(interaction);
   }
 }
+
+// ==========================================
+// EXPORTAÇÕES
+// ==========================================
 
 module.exports = {
   WIN_POINTS,
