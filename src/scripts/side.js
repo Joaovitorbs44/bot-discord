@@ -1,3 +1,4 @@
+
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -5,21 +6,17 @@ const {
   ButtonStyle
 } = require("discord.js");
 
-const config = require(
-  "../config/config"
-);
+const db = require("../database/database");
+const config = require("../config/config");
+const { createMatch } = require("./match");
+const queueState = require("./queueState");
 
-const {
-  createMatch
-} = require(
-  "./match"
-);
-
-const queueState = require(
-  "./queueState"
-);
+// ==========================================
+// ESTADO
+// ==========================================
 
 let sideChoiceActive = false;
+let sideChoiceFinishing = false;
 
 let captainA = null;
 let captainB = null;
@@ -32,48 +29,41 @@ let selectedMap = null;
 let sideA = null;
 let sideB = null;
 
-/*
- * Inicia a escolha de lado.
- */
-async function startSideChoice(
-  interaction,
-  matchData
-) {
-  if (sideChoiceActive) {
-    throw new Error(
-      "SIDE_CHOICE_ALREADY_ACTIVE"
-    );
-  }
+let sideMessage = null;
+let sideClient = null;
+let sideSessionId = null;
 
+// ==========================================
+// UTILITÁRIOS
+// ==========================================
+
+function getSession() {
+  return queueState.getActiveSession();
+}
+
+function parseState(raw) {
+  try {
+    return JSON.parse(raw || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function validateMatchData(data) {
   if (
-    !matchData ||
-    !matchData.map ||
-    !matchData.captainA ||
-    !matchData.captainB ||
-    !Array.isArray(
-      matchData.teamA
-    ) ||
-    !Array.isArray(
-      matchData.teamB
-    )
+    !data ||
+    !data.map ||
+    !data.captainA?.discordId ||
+    !data.captainB?.discordId ||
+    !Array.isArray(data.teamA) ||
+    !Array.isArray(data.teamB)
   ) {
-    throw new Error(
-      "INVALID_SIDE_CHOICE_DATA"
-    );
+    throw new Error("INVALID_SIDE_CHOICE_DATA");
   }
 
   if (
-    !matchData.captainA.discordId ||
-    !matchData.captainB.discordId
-  ) {
-    throw new Error(
-      "INVALID_SIDE_CHOICE_CAPTAINS"
-    );
-  }
-
-  if (
-    matchData.captainA.discordId ===
-    matchData.captainB.discordId
+    data.captainA.discordId ===
+    data.captainB.discordId
   ) {
     throw new Error(
       "SIDE_CHOICE_CAPTAINS_MUST_BE_DIFFERENT"
@@ -81,379 +71,460 @@ async function startSideChoice(
   }
 
   if (
-    matchData.teamA.length !==
-      config.matchmaking.teamSize ||
-    matchData.teamB.length !==
-      config.matchmaking.teamSize
+    data.teamA.length !== config.matchmaking.teamSize ||
+    data.teamB.length !== config.matchmaking.teamSize
   ) {
-    throw new Error(
-      "INVALID_SIDE_CHOICE_TEAM_SIZE"
-    );
+    throw new Error("INVALID_SIDE_CHOICE_TEAM_SIZE");
   }
 
-  const allPlayers = [
-    ...matchData.teamA,
-    ...matchData.teamB
-  ];
-
-  const uniquePlayers =
-    new Set(
-      allPlayers.map(
-        (player) =>
-          player.discordId
-      )
-    );
+  const ids = [
+    ...data.teamA,
+    ...data.teamB
+  ].map(player => player.discordId);
 
   if (
-    uniquePlayers.size !==
-    config.matchmaking.requiredPlayers
+    ids.length !== config.matchmaking.requiredPlayers ||
+    new Set(ids).size !== ids.length
   ) {
-    throw new Error(
-      "INVALID_SIDE_CHOICE_PLAYERS"
-    );
+    throw new Error("INVALID_SIDE_CHOICE_PLAYERS");
   }
-
-  const captainAInTeam =
-    matchData.teamA.some(
-      (player) =>
-        player.discordId ===
-        matchData.captainA.discordId
-    );
-
-  const captainBInTeam =
-    matchData.teamB.some(
-      (player) =>
-        player.discordId ===
-        matchData.captainB.discordId
-    );
 
   if (
-    !captainAInTeam ||
-    !captainBInTeam
+    !data.teamA.some(
+      p => p.discordId === data.captainA.discordId
+    ) ||
+    !data.teamB.some(
+      p => p.discordId === data.captainB.discordId
+    )
   ) {
-    throw new Error(
-      "SIDE_CHOICE_CAPTAIN_NOT_IN_TEAM"
-    );
-  }
-
-  captainA =
-    matchData.captainA;
-
-  captainB =
-    matchData.captainB;
-
-  teamA = [
-    ...matchData.teamA
-  ];
-
-  teamB = [
-    ...matchData.teamB
-  ];
-
-  selectedMap =
-    matchData.map;
-
-  sideA = null;
-  sideB = null;
-
-  sideChoiceActive = true;
-
-  queueState.lockQueue();
-
-  try {
-    await interaction.followUp(
-      createSideChoicePanel()
-    );
-  } catch (error) {
-    resetSideChoice();
-
-    throw error;
+    throw new Error("SIDE_CHOICE_CAPTAIN_NOT_IN_TEAM");
   }
 }
 
-/*
- * Painel de escolha.
- */
-function createSideChoicePanel() {
-  if (
-    !captainA ||
-    !captainB ||
-    !selectedMap
-  ) {
-    throw new Error(
-      "INVALID_SIDE_CHOICE_STATE"
-    );
-  }
-
-  const embed =
-    new EmbedBuilder()
-      .setTitle(
-        "Escolha de lado"
-      )
-      .setDescription(
-        `O mapa da partida será **${selectedMap}**.\n\n` +
-        `<@${captainA.discordId}>, escolha o lado inicial do **Time A**.`
-      )
-      .addFields(
-        {
-          name:
-            "Time A",
-
-          value:
-            `👑 ${captainA.nickname}`,
-
-          inline: true
-        },
-
-        {
-          name:
-            "Time B",
-
-          value:
-            `👑 ${captainB.nickname}`,
-
-          inline: true
-        }
-      )
-      .setFooter({
-        text:
-          "O Time B receberá automaticamente o lado oposto."
-      });
-
-  const buttons =
-    new ActionRowBuilder()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId(
-            "side_attack"
-          )
-          .setLabel(
-            "Ataque"
-          )
-          .setStyle(
-            ButtonStyle.Danger
-          ),
-
-        new ButtonBuilder()
-          .setCustomId(
-            "side_defense"
-          )
-          .setLabel(
-            "Defesa"
-          )
-          .setStyle(
-            ButtonStyle.Primary
-          )
-      );
-
+function getMatchSetup() {
   return {
-    embeds: [
-      embed
-    ],
-
-    components: [
-      buttons
-    ]
+    map: selectedMap,
+    captainA,
+    captainB,
+    sideA,
+    sideB,
+    teamA: [...teamA],
+    teamB: [...teamB]
   };
 }
 
-/*
- * Processa escolha.
- */
-async function handleSideChoice(
-  interaction
-) {
-  if (!sideChoiceActive) {
-    return interaction.reply({
-      content:
-        "Não existe uma escolha de lado ativa.",
-
-      ephemeral: true
-    });
-  }
+function saveSideState() {
+  const session = getSession();
 
   if (
-    interaction.user.id !==
-    captainA.discordId
+    !session ||
+    session.id !== sideSessionId ||
+    session.stage !== "side_choice"
   ) {
-    return interaction.reply({
-      content:
-        `Somente **${captainA.nickname}** pode escolher o lado inicial.`,
-
-      ephemeral: true
-    });
-  }
-
-  if (
-    interaction.customId ===
-    "side_attack"
-  ) {
-    sideA = "Ataque";
-    sideB = "Defesa";
-  } else if (
-    interaction.customId ===
-    "side_defense"
-  ) {
-    sideA = "Defesa";
-    sideB = "Ataque";
-  } else {
-    return interaction.reply({
-      content:
-        "Escolha de lado inválida.",
-
-      ephemeral: true
-    });
-  }
-
-  return finishSideChoice(
-    interaction
-  );
-}
-
-/*
- * Finaliza e cria partida.
- */
-async function finishSideChoice(
-  interaction
-) {
-  if (!sideChoiceActive) {
     return;
   }
 
-  if (
-    !sideA ||
-    !sideB
-  ) {
-    throw new Error(
-      "SIDE_NOT_SELECTED"
-    );
-  }
+  const state = parseState(session.state_json);
 
-  sideChoiceActive = false;
-
-  const matchData = {
-    map:
-      selectedMap,
-
+  state.sideChoice = {
+    map: selectedMap,
     captainA,
     captainB,
-
+    teamA,
+    teamB,
     sideA,
     sideB,
-
-    teamA: [
-      ...teamA
-    ],
-
-    teamB: [
-      ...teamB
-    ]
+    messageId: sideMessage?.id || null,
+    channelId: sideMessage?.channelId || null
   };
 
-  const teamAList =
-    createTeamList(
-      teamA,
-      captainA
+  db.prepare(`
+    UPDATE matchmaking_sessions
+    SET state_json = ?,
+        updated_at = ?
+    WHERE id = ? AND stage = 'side_choice'
+  `).run(
+    JSON.stringify(state),
+    Date.now(),
+    sideSessionId
+  );
+}
+
+function createTeamList(players, captain) {
+  if (!players?.length) return "—";
+
+  return players.map(player => {
+    const isCaptain =
+      player.discordId === captain.discordId;
+
+    return (
+      `${isCaptain ? "👑" : "•"} ` +
+      `<@${player.discordId}> — ${player.nickname}`
+    );
+  }).join("\n");
+}
+
+// ==========================================
+// PAINEL
+// ==========================================
+
+function createSideChoicePanel() {
+  if (!captainA || !captainB || !selectedMap) {
+    throw new Error("INVALID_SIDE_CHOICE_STATE");
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle("Escolha de lado")
+    .setDescription(
+      `O mapa da partida será **${selectedMap}**.\n\n` +
+      `<@${captainA.discordId}>, escolha o lado inicial do **Time A**.`
+    )
+    .addFields(
+      {
+        name: "Time A",
+        value: `👑 ${captainA.nickname}`,
+        inline: true
+      },
+      {
+        name: "Time B",
+        value: `👑 ${captainB.nickname}`,
+        inline: true
+      }
+    )
+    .setFooter({
+      text:
+        "O Time B receberá automaticamente o lado oposto."
+    });
+
+  const buttons = new ActionRowBuilder()
+    .addComponents(
+      new ButtonBuilder()
+        .setCustomId("side_attack")
+        .setLabel("Ataque")
+        .setStyle(ButtonStyle.Danger),
+
+      new ButtonBuilder()
+        .setCustomId("side_defense")
+        .setLabel("Defesa")
+        .setStyle(ButtonStyle.Primary)
     );
 
-  const teamBList =
-    createTeamList(
-      teamB,
-      captainB
-    );
+  return {
+    embeds: [embed],
+    components: [buttons]
+  };
+}
 
-  await interaction.update({
+function createCompletedPanel() {
+  return {
     embeds: [
       new EmbedBuilder()
-        .setTitle(
-          "Configuração concluída"
-        )
-        .setDescription(
-          `**Mapa:** ${selectedMap}`
-        )
+        .setTitle("Configuração concluída")
+        .setDescription(`**Mapa:** ${selectedMap}`)
         .addFields(
           {
-            name:
-              `Time A — ${sideA}`,
-
-            value:
-              teamAList,
-
+            name: `Time A — ${sideA}`,
+            value: createTeamList(teamA, captainA),
             inline: true
           },
-
           {
-            name:
-              `Time B — ${sideB}`,
-
-            value:
-              teamBList,
-
+            name: `Time B — ${sideB}`,
+            value: createTeamList(teamB, captainB),
             inline: true
           }
         )
         .setFooter({
-          text:
-            "Criando partida..."
+          text: "Criando partida..."
         })
     ],
-
     components: []
-  });
+  };
+}
+
+// ==========================================
+// INICIAR ESCOLHA DE LADO
+// ==========================================
+
+async function startSideChoice(interaction, matchData) {
+  if (sideChoiceActive) {
+    throw new Error("SIDE_CHOICE_ALREADY_ACTIVE");
+  }
+
+  validateMatchData(matchData);
+
+  const session = getSession();
+
+  if (!session) {
+    throw new Error("SIDE_CHOICE_SESSION_NOT_FOUND");
+  }
+
+  captainA = matchData.captainA;
+  captainB = matchData.captainB;
+
+  teamA = [...matchData.teamA];
+  teamB = [...matchData.teamB];
+
+  selectedMap = matchData.map;
+
+  sideA = null;
+  sideB = null;
+
+  sideClient = interaction.client;
+  sideSessionId = session.id;
+
+  sideChoiceActive = true;
+  sideChoiceFinishing = false;
+
+  db.prepare(`
+    UPDATE matchmaking_sessions
+    SET stage = 'side_choice',
+        deadline_at = NULL,
+        state_json = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    JSON.stringify({
+      sideChoice: {
+        map: selectedMap,
+        captainA,
+        captainB,
+        teamA,
+        teamB,
+        sideA: null,
+        sideB: null,
+        messageId: null,
+        channelId: null
+      }
+    }),
+    Date.now(),
+    sideSessionId
+  );
+
+  queueState.lockQueue();
 
   try {
-    await createMatch(
-      interaction,
-      matchData
-    );
+    sideMessage = await interaction.followUp({
+      ...createSideChoicePanel(),
+      fetchReply: true
+    });
+
+    saveSideState();
+  } catch (error) {
+    resetSideChoice();
+    throw error;
+  }
+}
+
+// ==========================================
+// PROCESSAR ESCOLHA
+// ==========================================
+
+async function handleSideChoice(interaction) {
+  const session = getSession();
+
+  if (
+    !sideChoiceActive ||
+    sideChoiceFinishing ||
+    !session ||
+    session.id !== sideSessionId ||
+    session.stage !== "side_choice"
+  ) {
+    return interaction.reply({
+      content: "Não existe uma escolha de lado ativa.",
+      ephemeral: true
+    });
+  }
+
+  if (interaction.user.id !== captainA.discordId) {
+    return interaction.reply({
+      content:
+        `Somente **${captainA.nickname}** pode escolher o lado inicial.`,
+      ephemeral: true
+    });
+  }
+
+  if (interaction.customId === "side_attack") {
+    sideA = "Ataque";
+    sideB = "Defesa";
+  } else if (interaction.customId === "side_defense") {
+    sideA = "Defesa";
+    sideB = "Ataque";
+  } else {
+    return interaction.reply({
+      content: "Escolha de lado inválida.",
+      ephemeral: true
+    });
+  }
+
+  saveSideState();
+
+  await finishSideChoice(interaction);
+}
+
+// ==========================================
+// FINALIZAR E CRIAR PARTIDA
+// ==========================================
+
+async function finishSideChoice(interaction = null) {
+  if (!sideChoiceActive || sideChoiceFinishing) {
+    return;
+  }
+
+  if (!sideA || !sideB) {
+    throw new Error("SIDE_NOT_SELECTED");
+  }
+
+  sideChoiceFinishing = true;
+
+  const matchData = getMatchSetup();
+
+  try {
+    if (interaction) {
+      await interaction.update(createCompletedPanel());
+    } else if (sideMessage) {
+      await sideMessage.edit(createCompletedPanel());
+    }
+
+    const context = interaction || {
+      client: sideClient,
+      followUp: async (payload) => {
+        if (!sideMessage?.channel) {
+          throw new Error("SIDE_CHOICE_CHANNEL_UNAVAILABLE");
+        }
+
+        return sideMessage.channel.send(payload);
+      }
+    };
+
+    await createMatch(context, matchData);
+
+    const session = getSession();
+
+    if (session && session.id === sideSessionId) {
+      db.prepare(`
+        UPDATE matchmaking_sessions
+        SET stage = 'playing',
+            deadline_at = NULL,
+            updated_at = ?
+        WHERE id = ? AND stage = 'side_choice'
+      `).run(Date.now(), sideSessionId);
+    }
 
     resetSideChoice();
   } catch (error) {
-    /*
-     * Conserva os dados da
-     * formação para permitir
-     * que /limpar-fila consiga
-     * recuperar e resetar tudo.
-     */
-    sideChoiceActive = false;
+    sideChoiceFinishing = false;
+
+    console.error(
+      "Erro ao finalizar escolha de lado:",
+      error
+    );
 
     throw error;
   }
 }
 
-function createTeamList(
-  players,
-  captain
-) {
-  if (
-    !players ||
-    players.length === 0
-  ) {
-    return "—";
+// ==========================================
+// RESTAURAR ESCOLHA DE LADO
+// ==========================================
+
+async function restoreSideChoice(client) {
+  const session = getSession();
+
+  if (!session || session.stage !== "side_choice") {
+    return false;
   }
 
-  return players
-    .map(
-      (player) => {
-        const isCaptain =
-          player.discordId ===
-          captain.discordId;
+  if (sideChoiceActive) return true;
 
-        return (
-          `${isCaptain ? "👑" : "•"} ` +
-          `<@${player.discordId}> — ` +
-          `${player.nickname}`
-        );
-      }
-    )
-    .join("\n");
+  const state = parseState(session.state_json);
+  const saved = state.sideChoice;
+
+  if (!saved) {
+    console.error(
+      "Não há dados persistidos da escolha de lado."
+    );
+    return false;
+  }
+
+  validateMatchData(saved);
+
+  captainA = saved.captainA;
+  captainB = saved.captainB;
+
+  teamA = [...saved.teamA];
+  teamB = [...saved.teamB];
+
+  selectedMap = saved.map;
+
+  sideA = saved.sideA || null;
+  sideB = saved.sideB || null;
+
+  sideSessionId = session.id;
+  sideClient = client;
+
+  sideChoiceActive = true;
+  sideChoiceFinishing = false;
+
+  const channel = await client.channels.fetch(
+    saved.channelId ||
+    config.discord.mapVetoChannelId ||
+    config.discord.queueChannelId
+  );
+
+  if (!channel?.send) {
+    resetSideChoice();
+    throw new Error("SIDE_CHOICE_CHANNEL_NOT_FOUND");
+  }
+
+  if (saved.messageId && channel.messages) {
+    try {
+      sideMessage = await channel.messages.fetch(
+        saved.messageId
+      );
+    } catch {
+      sideMessage = null;
+    }
+  }
+
+  if (!sideMessage) {
+    sideMessage = await channel.send(
+      sideA && sideB
+        ? createCompletedPanel()
+        : createSideChoicePanel()
+    );
+
+    saveSideState();
+  } else {
+    await sideMessage.edit(
+      sideA && sideB
+        ? createCompletedPanel()
+        : createSideChoicePanel()
+    );
+  }
+
+  if (sideA && sideB) {
+    /*
+     * A escolha já foi registrada antes
+     * do reinício. Continua a criação
+     * da partida automaticamente.
+     */
+    await finishSideChoice();
+  }
+
+  console.log(
+    "Escolha de lado restaurada."
+  );
+
+  return true;
 }
 
-/*
- * Reset completo.
- */
+// ==========================================
+// RESET
+// ==========================================
+
 function resetSideChoice() {
   sideChoiceActive = false;
+  sideChoiceFinishing = false;
 
   captainA = null;
   captainB = null;
@@ -465,37 +536,25 @@ function resetSideChoice() {
 
   sideA = null;
   sideB = null;
+
+  sideMessage = null;
+  sideClient = null;
+  sideSessionId = null;
 }
 
 function isSideChoiceActive() {
   return sideChoiceActive;
 }
 
-function getMatchSetup() {
-  return {
-    map:
-      selectedMap,
-
-    captainA,
-    captainB,
-
-    sideA,
-    sideB,
-
-    teamA: [
-      ...teamA
-    ],
-
-    teamB: [
-      ...teamB
-    ]
-  };
-}
+// ==========================================
+// EXPORTAÇÕES
+// ==========================================
 
 module.exports = {
   startSideChoice,
   handleSideChoice,
-
+  finishSideChoice,
+  restoreSideChoice,
   resetSideChoice,
   isSideChoiceActive,
   getMatchSetup
