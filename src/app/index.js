@@ -39,6 +39,12 @@ const {
   handleRemoveTimeout
 } = require("../scripts/removeTimeout");
 
+// PAINEL DA STAFF
+const {
+  handleStaffPanel,
+  handleStaffPanelButton
+} = require("../scripts/staffPanel");
+
 const {
   handleHistory,
   handleMatchLookup
@@ -327,6 +333,17 @@ client.on(
         return handleReject(interaction);
       }
 
+      // ======================================
+      // PAINEL DA STAFF - BOTÕES
+      // ======================================
+
+      if (
+        interaction.isButton() &&
+        interaction.customId.startsWith("staff_panel:")
+      ) {
+        return handleStaffPanelButton(interaction);
+      }
+
       // FILA
       if (
         interaction.isButton() &&
@@ -479,6 +496,7 @@ client.on(
                 ephemeral: true
               });
             }
+
             return handleSeason(interaction);
 
           case "temporadas":
@@ -489,6 +507,7 @@ client.on(
                 ephemeral: true
               });
             }
+
             return handleSeasons(interaction);
 
           case "solicitacoes":
@@ -500,9 +519,15 @@ client.on(
           case "limpar-fila":
             return handleClearQueueCommand(interaction);
 
-          // NOVO: REMOVER TIMEOUT DO READY CHECK
           case "remover-timeout":
             return handleRemoveTimeout(interaction);
+
+          // ==================================
+          // PAINEL DA STAFF - COMANDO
+          // ==================================
+
+          case "painel-staff":
+            return handleStaffPanel(interaction);
 
           default:
             return;
