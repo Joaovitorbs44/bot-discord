@@ -66,19 +66,93 @@ const MAP_IMAGES = {
 
 const imageCache = new Map();
 
-function escapeXml(value) {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+// Fonte bitmap 5x7.
+// Cada caractere é desenhado com retângulos SVG.
+// Não depende de fontes instaladas no Railway.
+
+const FONT = {
+  A: ["01110","10001","10001","11111","10001","10001","10001"],
+  B: ["11110","10001","10001","11110","10001","10001","11110"],
+  C: ["01111","10000","10000","10000","10000","10000","01111"],
+  D: ["11110","10001","10001","10001","10001","10001","11110"],
+  E: ["11111","10000","10000","11110","10000","10000","11111"],
+  F: ["11111","10000","10000","11110","10000","10000","10000"],
+  G: ["01111","10000","10000","10111","10001","10001","01111"],
+  H: ["10001","10001","10001","11111","10001","10001","10001"],
+  I: ["11111","00100","00100","00100","00100","00100","11111"],
+  J: ["00111","00010","00010","00010","10010","10010","01100"],
+  K: ["10001","10010","10100","11000","10100","10010","10001"],
+  L: ["10000","10000","10000","10000","10000","10000","11111"],
+  M: ["10001","11011","10101","10101","10001","10001","10001"],
+  N: ["10001","11001","10101","10011","10001","10001","10001"],
+  O: ["01110","10001","10001","10001","10001","10001","01110"],
+  P: ["11110","10001","10001","11110","10000","10000","10000"],
+  Q: ["01110","10001","10001","10001","10101","10010","01101"],
+  R: ["11110","10001","10001","11110","10100","10010","10001"],
+  S: ["01111","10000","10000","01110","00001","00001","11110"],
+  T: ["11111","00100","00100","00100","00100","00100","00100"],
+  U: ["10001","10001","10001","10001","10001","10001","01110"],
+  V: ["10001","10001","10001","10001","10001","01010","00100"],
+  W: ["10001","10001","10001","10101","10101","10101","01010"],
+  X: ["10001","10001","01010","00100","01010","10001","10001"],
+  Y: ["10001","10001","01010","00100","00100","00100","00100"],
+  Z: ["11111","00001","00010","00100","01000","10000","11111"],
+  "0": ["01110","10011","10101","10101","11001","10001","01110"],
+  "1": ["00100","01100","00100","00100","00100","00100","01110"],
+  "2": ["01110","10001","00001","00010","00100","01000","11111"],
+  "3": ["11110","00001","00001","01110","00001","00001","11110"],
+  "4": ["00010","00110","01010","10010","11111","00010","00010"],
+  "5": ["11111","10000","10000","11110","00001","00001","11110"],
+  "6": ["01110","10000","10000","11110","10001","10001","01110"],
+  "7": ["11111","00001","00010","00100","01000","01000","01000"],
+  "8": ["01110","10001","10001","01110","10001","10001","01110"],
+  "9": ["01110","10001","10001","01111","00001","00001","01110"],
+  " ": ["00000","00000","00000","00000","00000","00000","00000"],
+  "-": ["00000","00000","00000","11111","00000","00000","00000"]
+};
+
+function drawText(text, x, y, scale, color, maxWidth) {
+  const value = String(text).toUpperCase();
+  const advance = 6 * scale;
+
+  let output = "";
+  let offset = 0;
+
+  for (const char of value) {
+    if (offset + 5 * scale > maxWidth) {
+      break;
+    }
+
+    const glyph = FONT[char] || FONT[" "];
+
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 5; col++) {
+        if (glyph[row][col] !== "1") {
+          continue;
+        }
+
+        output +=
+          `<rect x="${x + offset + col * scale}" ` +
+          `y="${y + row * scale}" ` +
+          `width="${scale}" height="${scale}" ` +
+          `fill="${color}"/>`;
+      }
+    }
+
+    offset += advance;
+  }
+
+  return output;
 }
 
 function normalizeBan(item) {
-  return typeof item === "string"
-    ? { map: item }
-    : item;
+  if (typeof item === "string") {
+    return { map: item };
+  }
+
+  return item && typeof item === "object"
+    ? item
+    : null;
 }
 
 async function getBackground(map) {
@@ -97,33 +171,29 @@ async function getBackground(map) {
       }
     });
 
-    const contentType =
-      response.headers.get("content-type") || "";
+    const contentType = (
+      response.headers.get("content-type") || ""
+    ).toLowerCase();
 
     if (
       !response.ok ||
       !contentType.startsWith("image/")
     ) {
-      throw new Error(
-        "HTTP " + response.status
-      );
+      throw new Error(`HTTP ${response.status}`);
     }
 
     buffer = await sharp(
       Buffer.from(await response.arrayBuffer())
     )
       .resize(CARD_WIDTH, CARD_HEIGHT, {
-        fit: "cover"
+        fit: "cover",
+        position: "centre"
       })
       .png()
       .toBuffer();
-
   } catch (error) {
     console.warn(
-      "[mapVetoImage] " +
-      map +
-      ": " +
-      error.message
+      `[mapVetoImage] ${map}: ${error.message}`
     );
 
     buffer = await sharp({
@@ -143,6 +213,93 @@ async function getBackground(map) {
   return buffer;
 }
 
+function createOverlay(map, ban, selected) {
+  const banned = Boolean(ban) && !selected;
+
+  const color = selected
+    ? COLORS.success
+    : banned
+      ? COLORS.primary
+      : COLORS.success;
+
+  const status = selected
+    ? "ESCOLHIDO"
+    : banned
+      ? "BANIDO"
+      : "DISPONIVEL";
+
+  const teamValue =
+    ban?.captainTeam || ban?.team || null;
+
+  const team = banned && teamValue
+    ? ` - TIME ${String(teamValue).replace(/[^A-Za-z0-9]/g, "")}`
+    : "";
+
+  const darkOverlay = banned
+    ? `<rect width="${CARD_WIDTH}" height="${CARD_HEIGHT}"
+        fill="#000000" opacity="0.62"/>`
+    : "";
+
+  const cross = banned
+    ? `<path
+        d="M101 35 L139 73 M139 35 L101 73"
+        stroke="${COLORS.primary}"
+        stroke-width="8"
+        stroke-linecap="round"
+        fill="none"/>`
+    : "";
+
+  const border = selected
+    ? `<rect x="2" y="2"
+        width="${CARD_WIDTH - 4}"
+        height="${CARD_HEIGHT - 4}"
+        rx="5"
+        fill="none"
+        stroke="${COLORS.success}"
+        stroke-width="4"/>`
+    : "";
+
+  return Buffer.from(`
+    <svg xmlns="http://www.w3.org/2000/svg"
+      width="${CARD_WIDTH}"
+      height="${CARD_HEIGHT}">
+
+      ${darkOverlay}
+
+      <rect
+        x="0"
+        y="${CARD_HEIGHT - 47}"
+        width="${CARD_WIDTH}"
+        height="47"
+        fill="#000000"
+        opacity="0.88"
+      />
+
+      ${cross}
+
+      ${drawText(
+        map,
+        12,
+        CARD_HEIGHT - 37,
+        2,
+        COLORS.white,
+        CARD_WIDTH - 24
+      )}
+
+      ${drawText(
+        status + team,
+        12,
+        CARD_HEIGHT - 16,
+        1.5,
+        color,
+        CARD_WIDTH - 24
+      )}
+
+      ${border}
+    </svg>
+  `);
+}
+
 async function generateMapVetoImage(options = {}) {
   const bans = (
     Array.isArray(options.bannedMaps)
@@ -152,131 +309,20 @@ async function generateMapVetoImage(options = {}) {
     .map(normalizeBan)
     .filter(Boolean);
 
-  const selectedMap =
-    options.selectedMap || null;
+  const selectedMap = options.selectedMap || null;
 
   const cards = await Promise.all(
     MAP_POOL.map(async map => {
-      const ban = bans.find(
-        item => item.map === map
-      );
+      const ban = bans.find(item => item.map === map);
+      const selected = selectedMap === map;
 
-      const selected =
-        map === selectedMap;
+      const background = await getBackground(map);
+      const overlay = createOverlay(map, ban, selected);
 
-      const banned =
-        Boolean(ban) && !selected;
-
-      const color = selected
-        ? COLORS.success
-        : banned
-          ? COLORS.primary
-          : COLORS.success;
-
-      const status = selected
-        ? "ESCOLHIDO"
-        : banned
-          ? "BANIDO"
-          : "DISPONIVEL";
-
-      const team =
-        banned && (ban.captainTeam || ban.team)
-          ? " - TIME " +
-            String(
-              ban.captainTeam || ban.team
-            ).replace(/[^a-zA-Z0-9]/g, "")
-          : "";
-
-      const overlay = `
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="${CARD_WIDTH}"
-          height="${CARD_HEIGHT}"
-        >
-          ${
-            banned
-              ? `
-                <rect
-                  width="100%"
-                  height="100%"
-                  fill="#000"
-                  opacity="0.62"
-                />
-              `
-              : ""
-          }
-
-          <rect
-            x="0"
-            y="${CARD_HEIGHT - 47}"
-            width="${CARD_WIDTH}"
-            height="47"
-            fill="#000"
-            opacity="0.88"
-          />
-
-          ${
-            banned
-              ? `
-                <path
-                  d="
-                    M${CARD_WIDTH / 2 - 19} 35
-                    l38 38
-                    m0 -38
-                    l-38 38
-                  "
-                  fill="none"
-                  stroke="${COLORS.primary}"
-                  stroke-width="8"
-                  stroke-linecap="round"
-                />
-              `
-              : ""
-          }
-
-          <text
-            x="12"
-            y="${CARD_HEIGHT - 26}"
-            font-family="DejaVu Sans, sans-serif"
-            font-size="15"
-            font-weight="bold"
-            fill="white"
-          >${escapeXml(map)}</text>
-
-          <text
-            x="12"
-            y="${CARD_HEIGHT - 10}"
-            font-family="DejaVu Sans, sans-serif"
-            font-size="11"
-            font-weight="bold"
-            fill="${color}"
-          >${escapeXml(status + team)}</text>
-
-          ${
-            selected
-              ? `
-                <rect
-                  x="2"
-                  y="2"
-                  width="${CARD_WIDTH - 4}"
-                  height="${CARD_HEIGHT - 4}"
-                  rx="5"
-                  fill="none"
-                  stroke="${COLORS.success}"
-                  stroke-width="4"
-                />
-              `
-              : ""
-          }
-        </svg>
-      `;
-
-      return sharp(
-        await getBackground(map)
-      )
+      return sharp(background)
         .composite([
           {
-            input: Buffer.from(overlay),
+            input: overlay,
             left: 0,
             top: 0
           }
@@ -286,19 +332,16 @@ async function generateMapVetoImage(options = {}) {
     })
   );
 
-  const composites = cards.map(
-    (input, index) => ({
-      input,
-      left:
-        PADDING +
-        (index % COLUMNS) *
-          (CARD_WIDTH + GAP),
-      top:
-        PADDING +
-        Math.floor(index / COLUMNS) *
-          (CARD_HEIGHT + GAP)
-    })
-  );
+  const composites = cards.map((input, index) => ({
+    input,
+    left:
+      PADDING +
+      (index % COLUMNS) * (CARD_WIDTH + GAP),
+    top:
+      PADDING +
+      Math.floor(index / COLUMNS) *
+        (CARD_HEIGHT + GAP)
+  }));
 
   return sharp({
     create: {
