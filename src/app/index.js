@@ -1,4 +1,3 @@
-
 const {
   Client,
   GatewayIntentBits,
@@ -39,23 +38,24 @@ const {
   handleRemoveTimeout
 } = require("../scripts/removeTimeout");
 
-// ==========================================
-// PAINEL DA STAFF
-// ==========================================
-
 const {
   handleStaffPanel,
   handleStaffPanelButton
 } = require("../scripts/staffPanel");
 
 // ==========================================
-// PREVIEW - NOVO
+// PREVIEW INTERATIVO
 // ==========================================
 
 const {
   executePreview,
-  handlePreviewSelect
+  handlePreviewSelect,
+  handlePreviewAction
 } = require("../scripts/preview");
+
+// ==========================================
+// HISTÓRICO E TEMPORADAS
+// ==========================================
 
 const {
   handleHistory,
@@ -136,19 +136,22 @@ const ACCESS_FORM_TIMEOUT_MS =
   15 * 60 * 1000;
 
 // ==========================================
-// RANKS R6
+// RANKS
 // ==========================================
 
 const R6_RANKS = [
-  { label: "Cobre", value: "Cobre" },
-  { label: "Bronze", value: "Bronze" },
-  { label: "Prata", value: "Prata" },
-  { label: "Ouro", value: "Ouro" },
-  { label: "Platina", value: "Platina" },
-  { label: "Esmeralda", value: "Esmeralda" },
-  { label: "Diamante", value: "Diamante" },
-  { label: "Campeão", value: "Campeão" }
-];
+  "Cobre",
+  "Bronze",
+  "Prata",
+  "Ouro",
+  "Platina",
+  "Esmeralda",
+  "Diamante",
+  "Campeão"
+].map(rank => ({
+  label: rank,
+  value: rank
+}));
 
 // ==========================================
 // CLIENTE DISCORD
@@ -160,10 +163,6 @@ const client = new Client({
     GatewayIntentBits.GuildMembers
   ]
 });
-
-// ==========================================
-// CONTROLE DE INICIALIZAÇÃO
-// ==========================================
 
 let matchmakingInitialized = false;
 let matchmakingInitializing = false;
@@ -187,7 +186,8 @@ async function initializeMatchmaking(readyClient) {
   );
 
   try {
-    const recovery = queueState.restoreQueueState();
+    const recovery =
+      queueState.restoreQueueState();
 
     console.log(
       `Jogadores recuperados: ${recovery.restored}`
@@ -197,9 +197,8 @@ async function initializeMatchmaking(readyClient) {
       `Etapa encontrada: ${recovery.stage}`
     );
 
-    const queueMessage = await restoreQueuePanel(
-      readyClient
-    );
+    const queueMessage =
+      await restoreQueuePanel(readyClient);
 
     if (queueMessage) {
       console.log(
@@ -211,7 +210,8 @@ async function initializeMatchmaking(readyClient) {
       );
     }
 
-    const session = queueState.getActiveSession();
+    const session =
+      queueState.getActiveSession();
 
     if (!session) {
       console.log(
@@ -233,7 +233,9 @@ async function initializeMatchmaking(readyClient) {
         console.log(
           "Fila restaurada e disponível."
         );
-      } else if (session.stage === "playing") {
+      } else if (
+        session.stage === "playing"
+      ) {
         console.log(
           "Partida em andamento encontrada."
         );
@@ -245,9 +247,8 @@ async function initializeMatchmaking(readyClient) {
         );
 
         try {
-          const restored = await restoreHandler(
-            readyClient
-          );
+          const restored =
+            await restoreHandler(readyClient);
 
           console.log(
             restored
@@ -302,7 +303,9 @@ client.once(
       `Bot conectado como ${readyClient.user.tag}`
     );
 
-    await initializeMatchmaking(readyClient);
+    await initializeMatchmaking(
+      readyClient
+    );
   }
 );
 
@@ -314,16 +317,41 @@ client.on(
   Events.InteractionCreate,
   async interaction => {
     try {
-
       // ======================================
-      // PREVIEW - MENU INTERATIVO
+      // PREVIEW - NAVEGAÇÃO
       // ======================================
 
       if (
         interaction.isStringSelectMenu() &&
-        interaction.customId === "preview_select"
+        interaction.customId ===
+          "preview_select"
       ) {
-        return handlePreviewSelect(interaction);
+        return handlePreviewSelect(
+          interaction
+        );
+      }
+
+      // ======================================
+      // PREVIEW - AÇÕES
+      // ======================================
+
+      if (
+        (
+          interaction.isButton() ||
+          interaction.isStringSelectMenu()
+        ) &&
+        (
+          interaction.customId.startsWith(
+            "preview_action:"
+          ) ||
+          interaction.customId.startsWith(
+            "preview_choice:"
+          )
+        )
+      ) {
+        return handlePreviewAction(
+          interaction
+        );
       }
 
       // ======================================
@@ -332,7 +360,8 @@ client.on(
 
       if (
         interaction.isButton() &&
-        interaction.customId === "access_request"
+        interaction.customId ===
+          "access_request"
       ) {
         return handleAccess(interaction);
       }
@@ -343,9 +372,12 @@ client.on(
 
       if (
         interaction.isModalSubmit() &&
-        interaction.customId === "access_modal"
+        interaction.customId ===
+          "access_modal"
       ) {
-        return handleAccessModal(interaction);
+        return handleAccessModal(
+          interaction
+        );
       }
 
       // ======================================
@@ -354,9 +386,12 @@ client.on(
 
       if (
         interaction.isStringSelectMenu() &&
-        interaction.customId === "access_rank"
+        interaction.customId ===
+          "access_rank"
       ) {
-        return handleAccessRank(interaction);
+        return handleAccessRank(
+          interaction
+        );
       }
 
       // ======================================
@@ -369,7 +404,9 @@ client.on(
           "access_approve:"
         )
       ) {
-        return handleApprove(interaction);
+        return handleApprove(
+          interaction
+        );
       }
 
       // ======================================
@@ -382,7 +419,9 @@ client.on(
           "access_reject:"
         )
       ) {
-        return handleReject(interaction);
+        return handleReject(
+          interaction
+        );
       }
 
       // ======================================
@@ -395,7 +434,9 @@ client.on(
           "staff_panel:"
         )
       ) {
-        return handleStaffPanelButton(interaction);
+        return handleStaffPanelButton(
+          interaction
+        );
       }
 
       // ======================================
@@ -405,8 +446,10 @@ client.on(
       if (
         interaction.isButton() &&
         (
-          interaction.customId === "queue_join" ||
-          interaction.customId === "queue_leave"
+          interaction.customId ===
+            "queue_join" ||
+          interaction.customId ===
+            "queue_leave"
         )
       ) {
         if (!matchmakingInitialized) {
@@ -418,11 +461,13 @@ client.on(
           });
         }
 
-        return handleQueue(interaction);
+        return handleQueue(
+          interaction
+        );
       }
 
       // ======================================
-      // LIMPAR FILA - CONFIRMAR
+      // LIMPAR FILA
       // ======================================
 
       if (
@@ -430,19 +475,19 @@ client.on(
         interaction.customId ===
           "clear_queue_confirm"
       ) {
-        return handleClearQueueConfirm(interaction);
+        return handleClearQueueConfirm(
+          interaction
+        );
       }
-
-      // ======================================
-      // LIMPAR FILA - CANCELAR
-      // ======================================
 
       if (
         interaction.isButton() &&
         interaction.customId ===
           "clear_queue_cancel"
       ) {
-        return handleClearQueueCancel(interaction);
+        return handleClearQueueCancel(
+          interaction
+        );
       }
 
       // ======================================
@@ -451,20 +496,26 @@ client.on(
 
       if (
         interaction.isButton() &&
-        interaction.customId === "ready_confirm"
+        interaction.customId ===
+          "ready_confirm"
       ) {
-        return handleReadyCheck(interaction);
+        return handleReadyCheck(
+          interaction
+        );
       }
 
       // ======================================
-      // VOTAÇÃO DE CAPITÃES
+      // CAPITÃES
       // ======================================
 
       if (
         interaction.isStringSelectMenu() &&
-        interaction.customId === "captain_vote"
+        interaction.customId ===
+          "captain_vote"
       ) {
-        return handleCaptainVote(interaction);
+        return handleCaptainVote(
+          interaction
+        );
       }
 
       // ======================================
@@ -473,9 +524,12 @@ client.on(
 
       if (
         interaction.isStringSelectMenu() &&
-        interaction.customId === "draft_pick"
+        interaction.customId ===
+          "draft_pick"
       ) {
-        return handleDraftPick(interaction);
+        return handleDraftPick(
+          interaction
+        );
       }
 
       // ======================================
@@ -484,9 +538,12 @@ client.on(
 
       if (
         interaction.isStringSelectMenu() &&
-        interaction.customId === "map_veto"
+        interaction.customId ===
+          "map_veto"
       ) {
-        return handleMapVeto(interaction);
+        return handleMapVeto(
+          interaction
+        );
       }
 
       // ======================================
@@ -496,11 +553,15 @@ client.on(
       if (
         interaction.isButton() &&
         (
-          interaction.customId === "side_attack" ||
-          interaction.customId === "side_defense"
+          interaction.customId ===
+            "side_attack" ||
+          interaction.customId ===
+            "side_defense"
         )
       ) {
-        return handleSideChoice(interaction);
+        return handleSideChoice(
+          interaction
+        );
       }
 
       // ======================================
@@ -513,7 +574,9 @@ client.on(
           "result_report:"
         )
       ) {
-        return handleResultReport(interaction);
+        return handleResultReport(
+          interaction
+        );
       }
 
       // ======================================
@@ -526,7 +589,9 @@ client.on(
           "result_winner:"
         )
       ) {
-        return handleWinnerSelection(interaction);
+        return handleWinnerSelection(
+          interaction
+        );
       }
 
       // ======================================
@@ -539,7 +604,9 @@ client.on(
           "result_confirm:"
         )
       ) {
-        return handleResultConfirmation(interaction);
+        return handleResultConfirmation(
+          interaction
+        );
       }
 
       // ======================================
@@ -552,7 +619,9 @@ client.on(
           "result_dispute:"
         )
       ) {
-        return handleResultDispute(interaction);
+        return handleResultDispute(
+          interaction
+        );
       }
 
       // ======================================
@@ -565,7 +634,9 @@ client.on(
           "staff_result:"
         )
       ) {
-        return handleStaffResult(interaction);
+        return handleStaffResult(
+          interaction
+        );
       }
 
       // ======================================
@@ -578,61 +649,82 @@ client.on(
           "staff_cancel:"
         )
       ) {
-        return handleStaffCancel(interaction);
+        return handleStaffCancel(
+          interaction
+        );
       }
 
       // ======================================
       // COMANDOS
       // ======================================
 
-      if (interaction.isChatInputCommand()) {
+      if (
+        interaction.isChatInputCommand()
+      ) {
         switch (interaction.commandName) {
-
           case "preview":
-            return executePreview(interaction);
+            return executePreview(
+              interaction
+            );
 
           case "perfil":
-            return handleProfile(interaction);
+            return handleProfile(
+              interaction
+            );
 
           case "ranking":
-            return handleRanking(interaction);
+            return handleRanking(
+              interaction
+            );
 
           case "historico":
-            return handleHistory(interaction);
+            return handleHistory(
+              interaction
+            );
 
           case "partida":
-            return handleMatchLookup(interaction);
+            return handleMatchLookup(
+              interaction
+            );
 
           case "temporada":
             if (
-              typeof handleSeason !== "function"
+              typeof handleSeason ===
+              "function"
             ) {
-              return interaction.reply({
-                content:
-                  "O comando de temporada " +
-                  "ainda não está configurado.",
-                ephemeral: true
-              });
+              return handleSeason(
+                interaction
+              );
             }
 
-            return handleSeason(interaction);
+            return interaction.reply({
+              content:
+                "O comando de temporada " +
+                "ainda não está configurado.",
+              ephemeral: true
+            });
 
           case "temporadas":
             if (
-              typeof handleSeasons !== "function"
+              typeof handleSeasons ===
+              "function"
             ) {
-              return interaction.reply({
-                content:
-                  "O histórico de temporadas " +
-                  "ainda não está configurado.",
-                ephemeral: true
-              });
+              return handleSeasons(
+                interaction
+              );
             }
 
-            return handleSeasons(interaction);
+            return interaction.reply({
+              content:
+                "O histórico de temporadas " +
+                "ainda não está configurado.",
+              ephemeral: true
+            });
 
           case "solicitacoes":
-            return handleSolicitacoes(interaction);
+            return handleSolicitacoes(
+              interaction
+            );
 
           case "remover-fila":
             return handleRemoveQueueCommand(
@@ -645,10 +737,14 @@ client.on(
             );
 
           case "remover-timeout":
-            return handleRemoveTimeout(interaction);
+            return handleRemoveTimeout(
+              interaction
+            );
 
           case "painel-staff":
-            return handleStaffPanel(interaction);
+            return handleStaffPanel(
+              interaction
+            );
 
           default:
             return;
@@ -665,13 +761,11 @@ client.on(
           interaction.replied ||
           interaction.deferred
         ) {
-          await interaction.followUp({
+          return await interaction.followUp({
             content:
               "Ocorreu um erro ao processar essa ação.",
             ephemeral: true
           });
-
-          return;
         }
 
         await interaction.reply({
@@ -701,19 +795,20 @@ async function handleAccessModal(interaction) {
   `).get(interaction.user.id);
 
   if (
-    existingRequest &&
-    existingRequest.status === "pending"
+    existingRequest?.status ===
+    "pending"
   ) {
     return interaction.reply({
       content:
-        "Você já possui uma solicitação aguardando análise.",
+        "Você já possui uma solicitação " +
+        "aguardando análise.",
       ephemeral: true
     });
   }
 
   if (
-    existingRequest &&
-    existingRequest.status === "approved"
+    existingRequest?.status ===
+    "approved"
   ) {
     return interaction.reply({
       content:
@@ -726,14 +821,20 @@ async function handleAccessModal(interaction) {
     .getTextInputValue("name")
     .trim();
 
-  const twitchNickname = interaction.fields
-    .getTextInputValue("twitch_nickname")
-    .trim()
-    .replace(/^@/, "");
+  const twitchNickname =
+    interaction.fields
+      .getTextInputValue(
+        "twitch_nickname"
+      )
+      .trim()
+      .replace(/^@/, "");
 
-  const r6Nickname = interaction.fields
-    .getTextInputValue("r6_nickname")
-    .trim();
+  const r6Nickname =
+    interaction.fields
+      .getTextInputValue(
+        "r6_nickname"
+      )
+      .trim();
 
   if (
     !name ||
@@ -742,7 +843,8 @@ async function handleAccessModal(interaction) {
   ) {
     return interaction.reply({
       content:
-        "Preencha todos os campos da solicitação.",
+        "Preencha todos os campos " +
+        "da solicitação.",
       ephemeral: true
     });
   }
@@ -757,15 +859,15 @@ async function handleAccessModal(interaction) {
     }
   );
 
-  const rankSelect = new StringSelectMenuBuilder()
-    .setCustomId("access_rank")
-    .setPlaceholder("Selecione seu rank atual")
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(R6_RANKS);
-
-  const row = new ActionRowBuilder()
-    .addComponents(rankSelect);
+  const rankSelect =
+    new StringSelectMenuBuilder()
+      .setCustomId("access_rank")
+      .setPlaceholder(
+        "Selecione seu rank atual"
+      )
+      .setMinValues(1)
+      .setMaxValues(1)
+      .addOptions(R6_RANKS);
 
   const embed = new EmbedBuilder()
     .setTitle("Selecione seu rank")
@@ -793,7 +895,10 @@ async function handleAccessModal(interaction) {
 
   return interaction.reply({
     embeds: [embed],
-    components: [row],
+    components: [
+      new ActionRowBuilder()
+        .addComponents(rankSelect)
+    ],
     ephemeral: true
   });
 }
@@ -825,13 +930,14 @@ async function handleAccessRank(interaction) {
     });
   }
 
-  const r6Rank = interaction.values[0];
+  const r6Rank =
+    interaction.values[0];
 
-  const validRank = R6_RANKS.some(
-    rank => rank.value === r6Rank
-  );
-
-  if (!validRank) {
+  if (
+    !R6_RANKS.some(
+      rank => rank.value === r6Rank
+    )
+  ) {
     return interaction.reply({
       content: "Rank inválido.",
       ephemeral: true
@@ -848,7 +954,10 @@ async function handleAccessRank(interaction) {
 
   if (existingRequest) {
     if (
-      existingRequest.status === "pending"
+      existingRequest.status ===
+        "pending" ||
+      existingRequest.status ===
+        "approved"
     ) {
       pendingAccessForms.delete(
         interaction.user.id
@@ -856,23 +965,9 @@ async function handleAccessRank(interaction) {
 
       return interaction.update({
         content:
-          "Você já possui uma solicitação " +
-          "aguardando análise.",
-        embeds: [],
-        components: []
-      });
-    }
-
-    if (
-      existingRequest.status === "approved"
-    ) {
-      pendingAccessForms.delete(
-        interaction.user.id
-      );
-
-      return interaction.update({
-        content:
-          "Você já possui acesso ao matchmaking.",
+          existingRequest.status === "pending"
+            ? "Você já possui uma solicitação aguardando análise."
+            : "Você já possui acesso ao matchmaking.",
         embeds: [],
         components: []
       });
@@ -948,7 +1043,8 @@ async function handleAccessRank(interaction) {
     .addFields(
       {
         name: "Usuário",
-        value: `<@${interaction.user.id}>`,
+        value:
+          `<@${interaction.user.id}>`,
         inline: false
       },
       {
@@ -958,7 +1054,8 @@ async function handleAccessRank(interaction) {
       },
       {
         name: "Twitch",
-        value: `@${form.twitchNickname}`,
+        value:
+          `@${form.twitchNickname}`,
         inline: true
       },
       {
@@ -977,22 +1074,27 @@ async function handleAccessRank(interaction) {
     })
     .setTimestamp();
 
-  const buttons = new ActionRowBuilder()
-    .addComponents(
-      new ButtonBuilder()
-        .setCustomId(
-          `access_approve:${requestId}`
-        )
-        .setLabel("Aprovar")
-        .setStyle(ButtonStyle.Success),
+  const buttons =
+    new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId(
+            `access_approve:${requestId}`
+          )
+          .setLabel("Aprovar")
+          .setStyle(
+            ButtonStyle.Success
+          ),
 
-      new ButtonBuilder()
-        .setCustomId(
-          `access_reject:${requestId}`
-        )
-        .setLabel("Rejeitar")
-        .setStyle(ButtonStyle.Danger)
-    );
+        new ButtonBuilder()
+          .setCustomId(
+            `access_reject:${requestId}`
+          )
+          .setLabel("Rejeitar")
+          .setStyle(
+            ButtonStyle.Danger
+          )
+      );
 
   await staffChannel.send({
     embeds: [embed],
