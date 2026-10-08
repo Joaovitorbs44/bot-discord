@@ -136,11 +136,12 @@ function listPlayers(players, captain = null) {
   return players.map(player => {
     const marker =
       player.id === captain ? "👑" : "•";
-return (
-$DIL0 **$DIL1** +
- · $DIL2
-);
-}).join("\n");
+
+    return (
+      `${marker} **${player.nickname}**` +
+      ` · ${player.rank}`
+    );
+  }).join("\n");
 }
 function createContainer(title, subtitle) {
   const container = new ContainerBuilder()
