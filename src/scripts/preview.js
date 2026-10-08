@@ -1,4 +1,3 @@
-
 const {
   SlashCommandBuilder,
   ContainerBuilder,
@@ -7,6 +6,7 @@ const {
   SeparatorSpacingSize,
   MediaGalleryBuilder,
   MediaGalleryItemBuilder,
+  AttachmentBuilder,
   ActionRowBuilder,
   StringSelectMenuBuilder,
   ButtonBuilder,
@@ -14,31 +14,31 @@ const {
   MessageFlags,
   PermissionFlagsBits
 } = require("discord.js");
-
 const config = require("../config/config");
-
+const {
+  MAP_POOL,
+  generateMapVetoImage
+} = require("./mapVetoImage");
 // ==========================================
 // CONFIGURAÇÕES
 // ==========================================
-
 const PRIMARY = 0xFF3D2C;
-
+const IMAGE_NAME = "map-veto-preview.png";
 const PLAYERS = Array.from(
-  { length: 10 },
-  (_, index) => ({
-    id: `player${String(index + 1).padStart(2, "0")}`,
-    nickname:
-      `player${String(index + 1).padStart(2, "0")}`,
-    rank: [
-      "Diamante",
-      "Esmeralda",
-      "Platina",
-      "Ouro",
-      "Prata"
-    ][index % 5]
-  })
+{ length: 10 },
+(_, index) => ({
+id: player$DIL0,
+nickname:
+player$DIL1,
+rank: [
+"Diamante",
+"Esmeralda",
+"Platina",
+"Ouro",
+"Prata"
+][index % 5]
+})
 );
-
 const TEAM_A = [
   PLAYERS[0],
   PLAYERS[2],
@@ -46,7 +46,6 @@ const TEAM_A = [
   PLAYERS[6],
   PLAYERS[8]
 ];
-
 const TEAM_B = [
   PLAYERS[1],
   PLAYERS[3],
@@ -54,84 +53,30 @@ const TEAM_B = [
   PLAYERS[7],
   PLAYERS[9]
 ];
-
-// ==========================================
-// MAPAS
-// ==========================================
-
-const MAPS = [
-  "Bank",
-  "Border",
-  "Chalet",
-  "Clubhouse",
-  "Villa",
-  "Kafe Dostoyevsky",
-  "Lair",
-  "Nighthaven Labs",
-  "Fortress"
-];
-
-// ==========================================
-// IMAGENS UBISOFT
-// ==========================================
-
-const MAP_IMAGE_URLS = {
-  Bank:
-    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/4mjO2UYo1gqwhess6Mi5gb/a08a0b4886d73742e4d60315b9f21106/R6S_Maps_Bank_INT.jpg",
-
-  Border:
-    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/5vsJsf9T6r7aFBLJX8dJOG/dafc156a04d0a488768bb67f4571ee9e/R6S_Maps_Border_INT.jpg",
-
-  Chalet:
-    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/4M17EQjgQCJOy2NpZM08OT/36c6b2db0da388d851a5c518335c9145/R6S_Maps_Chalet_INT.jpg",
-
-  Clubhouse:
-    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/2ljlmbIAzZyVPSxOIcnlBn/da345d768d59f205b55ebae07c9f5ab1/R6S_Maps_Clubhouse_INT.jpg",
-
-  Villa:
-    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/6unM0FYNkxPsr7BSiKLPR5/1a3e9cf2565be709e993a809457e595a/r6s-maps-villa-main.jpg",
-
-  "Kafe Dostoyevsky":
-    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/2fFapm8NXcr8tVPK5wKvAw/7badc6f2631b4954e11acb087b5cf24d/R6S_Maps_RussianCafe_INT.jpg",
-
-  Lair:
-    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/2bKyUztyfsi7HfL9RGtPb9/b34c837688b2b4db51ce1e97520d61ef/ModernizedMap_Lair_keyart.jpg",
-
-  "Nighthaven Labs":
-    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/2gMeZHxuUrUzHTTBdxqGJJ/3bb639dc291983d825cbde80c15efbad/ModernizedMap_Nighthaven_keyart.jpg",
-
-  Fortress:
-    "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/4WTHlSiKQwN09UHrKTSxo8/579a9b6411b879591f9a01124a0bae99/fortress-reworked-keyart.jpg"
-};
-
 // ==========================================
 // ESTADO FICTÍCIO DO VETO
 // ==========================================
-
 const PREVIEW_BANNED_MAPS = [
   {
     map: "Bank",
-    team: "A",
+    captainTeam: "A",
     captain: "player01"
   },
   {
     map: "Border",
-    team: "B",
+    captainTeam: "B",
     captain: "player02"
   }
 ];
-
-const PREVIEW_AVAILABLE_MAPS = MAPS.filter(
+const PREVIEW_AVAILABLE_MAPS = MAP_POOL.filter(
   map =>
     !PREVIEW_BANNED_MAPS.some(
       banned => banned.map === map
     )
 );
-
 // ==========================================
-// PAINÉIS DISPONÍVEIS
+// PAINÉIS
 // ==========================================
-
 const PANELS = [
   { label: "Fila", value: "queue", emoji: "🎮" },
   { label: "Ready Check", value: "ready", emoji: "✅" },
@@ -143,17 +88,14 @@ const PANELS = [
   { label: "Confirmação", value: "confirm", emoji: "📋" },
   { label: "Resultado final", value: "result", emoji: "🥇" }
 ];
-
 // ==========================================
 // PERMISSÕES
 // ==========================================
-
 function isStaff(interaction) {
   const roleId =
     config.discord?.staffRoleId ||
     process.env.STAFF_ROLE_ID;
-
-  const hasRole = Boolean(
+const hasRole = Boolean(
     roleId &&
     (
       interaction.member?.roles?.cache?.has?.(roleId) ||
@@ -163,245 +105,177 @@ function isStaff(interaction) {
       )
     )
   );
-
-  const administrator =
+const administrator =
     interaction.memberPermissions?.has(
       PermissionFlagsBits.Administrator
     ) || false;
-
-  return hasRole || administrator;
+return hasRole || administrator;
 }
-
 // ==========================================
 // UTILITÁRIOS
 // ==========================================
-
 function separator(container) {
   container.addSeparatorComponents(
     new SeparatorBuilder()
       .setDivider(true)
       .setSpacing(SeparatorSpacingSize.Small)
   );
-
-  return container;
+return container;
 }
-
 function addText(container, content) {
   container.addTextDisplayComponents(
-    new TextDisplayBuilder()
-      .setContent(content)
+    new TextDisplayBuilder().setContent(content)
   );
-
-  return container;
+return container;
 }
-
 function listPlayers(players, captain = null) {
   return players.map(player => {
     const marker =
       player.id === captain ? "👑" : "•";
-
-    return (
-      `${marker} **${player.nickname}**` +
-      ` · ${player.rank}`
-    );
-  }).join("\n");
+return (
+$DIL0 **$DIL1** +
+ · $DIL2
+);
+}).join("\n");
 }
-
 function createContainer(title, subtitle) {
   const container = new ContainerBuilder()
     .setAccentColor(PRIMARY);
-
-  addText(
-    container,
-    "## INVISIXTATIONAL\n" +
-    `### ${title}\n` +
-    `-# ${subtitle}`
-  );
-
+addText(
+container,
+"## INVISIXTATIONAL\n" +
+### $DIL0\n +
+-# $DIL1
+);
   separator(container);
-
-  return container;
+return container;
 }
-
-function createButton(
-  id,
-  label,
-  emoji,
-  style
-) {
-  return new ButtonBuilder()
-    .setCustomId(`preview_demo_${id}`)
-    .setLabel(label)
-    .setEmoji(emoji)
-    .setStyle(style)
-    .setDisabled(true);
+function createButton(id, label, emoji, style) {
+return new ButtonBuilder()
+.setCustomId(preview_demo_$DIL0)
+.setLabel(label)
+.setEmoji(emoji)
+.setStyle(style)
+.setDisabled(true);
 }
-
 function buttonRow(...buttons) {
   return new ActionRowBuilder()
     .addComponents(buttons);
 }
-
 // ==========================================
-// GALERIA DE MAPAS
+// MOSAICO DE MAPAS
 // ==========================================
-
-function createMapGallery(maps) {
-  const gallery = new MediaGalleryBuilder();
-
-  let added = 0;
-
-  for (const map of maps) {
-    const url = MAP_IMAGE_URLS[map];
-
-    if (!url) {
-      continue;
-    }
-
-    const banned =
-      PREVIEW_BANNED_MAPS.some(
-        item => item.map === map
-      );
-
-    const status = banned
-      ? "BANIDO"
-      : "DISPONÍVEL";
-
-    gallery.addItems(
-      new MediaGalleryItemBuilder()
-        .setURL(url)
-        .setDescription(
-          `${map} · ${status}`
-        )
-    );
-
-    added++;
-  }
-
-  return added > 0 ? gallery : null;
+async function createPreviewMapImage() {
+  const buffer = await generateMapVetoImage({
+    bannedMaps: PREVIEW_BANNED_MAPS,
+    selectedMap: null
+  });
+return new AttachmentBuilder(buffer, {
+    name: IMAGE_NAME
+  });
 }
-
+function addPreviewMapImage(container) {
+const gallery = new MediaGalleryBuilder()
+.addItems(
+new MediaGalleryItemBuilder()
+.setURL(attachment://$DIL0)
+.setDescription(
+"Mosaico compacto 3x3 com os nove mapas"
+)
+);
+container.addMediaGalleryComponents(gallery);
+}
 // ==========================================
-// PAINEL DE VETO COM IMAGENS
+// PAINEL DE VETO
 // ==========================================
-
-function buildMapPanel() {
+async function buildMapPanel() {
   const container = createContainer(
     "VETO DE MAPAS",
     "PICK & BAN · MELHOR DE 1"
   );
-
-  addText(
-    container,
-    "**Rodada:** 3/8\n" +
-    "**Vez de banir:** player01 · Time A\n" +
-    "**Tempo restante:** 30 segundos\n" +
-    `**Mapas disponíveis:** ${PREVIEW_AVAILABLE_MAPS.length}`
-  );
-
+addText(
+container,
+"Rodada: 3/8\n" +
+"Vez de banir: player01 · Time A\n" +
+"Tempo restante: 30 segundos\n" +
+**Mapas disponíveis:** $DIL0
+);
   separator(container);
-
-  addText(
+addText(
     container,
     "### MAP POOL\n" +
-    "-# Imagens dos nove mapas da partida"
+    "-# Mosaico 3×3 · Verde: disponível · Vermelho: banido"
   );
-
-  const gallery = createMapGallery(MAPS);
-
-  if (gallery) {
-    container.addMediaGalleryComponents(
-      gallery
-    );
-  }
-
+  addPreviewMapImage(container);
   separator(container);
-
-  addText(
-    container,
-    "### MAPAS DISPONÍVEIS\n" +
-    PREVIEW_AVAILABLE_MAPS.map(
-      map => `🟢 ${map}`
-    ).join("\n")
-  );
-
+addText(
+container,
+"### MAPAS DISPONÍVEIS\n" +
+PREVIEW_AVAILABLE_MAPS.map(
+map => 🟢 $DIL0
+).join("\n")
+);
   separator(container);
-
-  addText(
-    container,
-    "### HISTÓRICO DE BANIMENTOS\n" +
-    PREVIEW_BANNED_MAPS.map(
-      (item, index) =>
-        `**${index + 1}.** ❌ ${item.map} · ` +
-        `Time ${item.team}`
-    ).join("\n")
-  );
-
+addText(
+container,
+"### HISTÓRICO DE BANIMENTOS\n" +
+PREVIEW_BANNED_MAPS.map(
+(item, index) =>
+**$DIL0.** ❌ $DIL1 ·  +
+Time $DIL2
+).join("\n")
+);
   separator(container);
-
-  addText(
+addText(
     container,
     "-# Demonstração visual. Nenhum mapa " +
     "será banido de verdade."
   );
-
-  const mapSelect =
-    new StringSelectMenuBuilder()
-      .setCustomId("preview_demo_map")
-      .setPlaceholder(
-        "Escolha um mapa para banir"
-      )
-      .setDisabled(true)
-      .addOptions(
-        PREVIEW_AVAILABLE_MAPS.map(
-          map => ({
-            label: map,
-            value: map
-          })
-        )
-      );
-
-  return {
+const mapSelect = new StringSelectMenuBuilder()
+    .setCustomId("preview_demo_map")
+    .setPlaceholder("Escolha um mapa para banir")
+    .setDisabled(true)
+    .addOptions(
+      PREVIEW_AVAILABLE_MAPS.map(map => ({
+        label: map,
+        value: map
+      }))
+    );
+return {
     container,
     components: [
       new ActionRowBuilder()
         .addComponents(mapSelect)
-    ]
+    ],
+    files: [await createPreviewMapImage()]
   };
 }
-
 // ==========================================
 // CONSTRUIR PAINÉIS
 // ==========================================
-
-function buildPanel(type) {
+async function buildPanel(type) {
   let container;
-
-  const components = [];
-
-  switch (type) {
+const components = [];
+  const files = [];
+switch (type) {
     case "queue": {
       container = createContainer(
         "FILA COMPETITIVA",
         "MATCHMAKING · 5V5"
       );
-
-      addText(
-        container,
-        "**Status:** 🟢 Aberta\n" +
-        "**Jogadores:** 6/10\n" +
-        "**Formato:** Melhor de 1 · 5v5"
-      );
-
+addText(
+container,
+"Status: 🟢 Aberta\n" +
+"Jogadores: 6/10\n" +
+"Formato: Melhor de 1 · 5v5"
+);
       separator(container);
-
-      addText(
+addText(
         container,
         "### JOGADORES NA FILA\n" +
         listPlayers(PLAYERS.slice(0, 6))
       );
-
-      components.push(
+components.push(
         buttonRow(
           createButton(
             "join",
@@ -417,35 +291,29 @@ function buildPanel(type) {
           )
         )
       );
-
-      break;
+break;
     }
-
-    case "ready": {
+case "ready": {
       container = createContainer(
         "READY CHECK",
         "CONFIRMAÇÃO DE PRESENÇA"
       );
-
-      addText(
-        container,
-        "**Status:** Aguardando jogadores\n" +
-        "**Confirmados:** 7/10\n" +
-        "**Prazo:** 60 segundos"
-      );
-
+addText(
+container,
+"Status: Aguardando jogadores\n" +
+"Confirmados: 7/10\n" +
+"Prazo: 60 segundos"
+);
       separator(container);
-
-      addText(
-        container,
-        PLAYERS.map(
-          (player, index) =>
-            `${index < 7 ? "✅" : "⏳"} ` +
-            player.nickname
-        ).join("\n")
-      );
-
-      components.push(
+addText(
+container,
+PLAYERS.map(
+(player, index) =>
+$DIL0  +
+player.nickname
+).join("\n")
+);
+components.push(
         buttonRow(
           createButton(
             "ready",
@@ -455,34 +323,28 @@ function buildPanel(type) {
           )
         )
       );
-
-      break;
+break;
     }
-
-    case "captains": {
+case "captains": {
       container = createContainer(
         "VOTAÇÃO DE CAPITÃES",
         "10 JOGADORES · 2 CAPITÃES"
       );
-
-      addText(
-        container,
-        "**Votos registrados:** 6/10\n" +
-        "Cada jogador escolhe um capitão."
-      );
-
+addText(
+container,
+"Votos registrados: 6/10\n" +
+"Cada jogador escolhe um capitão."
+);
       separator(container);
-
-      addText(
-        container,
-        PLAYERS.map(
-          (player, index) =>
-            `• ${player.nickname} · ` +
-            (index < 6 ? "Votou" : "Pendente")
-        ).join("\n")
-      );
-
-      components.push(
+addText(
+container,
+PLAYERS.map(
+(player, index) =>
+• $DIL0 ·  +
+(index < 6 ? "Votou" : "Pendente")
+).join("\n")
+);
+components.push(
         new ActionRowBuilder()
           .addComponents(
             new StringSelectMenuBuilder()
@@ -501,27 +363,22 @@ function buildPanel(type) {
               )
           )
       );
-
-      break;
+break;
     }
-
-    case "draft": {
+case "draft": {
       container = createContainer(
         "DRAFT 5V5",
         "ESCOLHA DE JOGADORES"
       );
-
-      addText(
-        container,
-        "**Rodada:** 2/5\n" +
-        "**Vez:** player02 · Time B\n" +
-        "**Escolhas:** 2 jogadores\n" +
-        "**Prazo:** 45 segundos"
-      );
-
+addText(
+container,
+"Rodada: 2/5\n" +
+"Vez: player02 · Time B\n" +
+"Escolhas: 2 jogadores\n" +
+"Prazo: 45 segundos"
+);
       separator(container);
-
-      addText(
+addText(
         container,
         "### 🔴 TIME A\n" +
         listPlayers(
@@ -529,10 +386,8 @@ function buildPanel(type) {
           "player01"
         )
       );
-
       separator(container);
-
-      addText(
+addText(
         container,
         "### 🔵 TIME B\n" +
         listPlayers(
@@ -540,10 +395,8 @@ function buildPanel(type) {
           "player02"
         )
       );
-
       separator(container);
-
-      const available = PLAYERS.filter(
+const available = PLAYERS.filter(
         player =>
           ![
             "player01",
@@ -551,14 +404,12 @@ function buildPanel(type) {
             "player03"
           ].includes(player.id)
       );
-
-      addText(
+addText(
         container,
         "### DISPONÍVEIS\n" +
         listPlayers(available)
       );
-
-      components.push(
+components.push(
         new ActionRowBuilder()
           .addComponents(
             new StringSelectMenuBuilder()
@@ -580,52 +431,39 @@ function buildPanel(type) {
               )
           )
       );
-
-      break;
+break;
     }
-
-    case "maps": {
-      const mapPanel = buildMapPanel();
-
+case "maps": {
+      const mapPanel = await buildMapPanel();
       container = mapPanel.container;
-
-      components.push(
-        ...mapPanel.components
-      );
-
-      break;
+components.push(...mapPanel.components);
+      files.push(...mapPanel.files);
+break;
     }
-
-    case "side": {
+case "side": {
       container = createContainer(
         "ESCOLHA DE LADO",
         "CONFIGURAÇÃO DA PARTIDA"
       );
-
-      addText(
-        container,
-        "**Mapa:** Chalet\n" +
-        "**Capitão responsável:** player01\n\n" +
-        "O Time A escolhe o lado inicial."
-      );
-
+addText(
+container,
+"Mapa: Chalet\n" +
+"Capitão responsável: player01\n\n" +
+"O Time A escolhe o lado inicial."
+);
       separator(container);
-
-      addText(
+addText(
         container,
         "### 🔴 TIME A\n" +
         listPlayers(TEAM_A, "player01")
       );
-
       separator(container);
-
-      addText(
+addText(
         container,
         "### 🔵 TIME B\n" +
         listPlayers(TEAM_B, "player02")
       );
-
-      components.push(
+components.push(
         buttonRow(
           createButton(
             "attack",
@@ -641,40 +479,32 @@ function buildPanel(type) {
           )
         )
       );
-
-      break;
+break;
     }
-
-    case "match": {
+case "match": {
       container = createContainer(
         "PARTIDA COMPETITIVA",
         "PARTIDA #482731 · 5V5"
       );
-
-      addText(
-        container,
-        "**Mapa:** Chalet\n" +
-        "**Status:** 🟢 Em andamento\n" +
-        "**Temporada:** Temporada atual"
-      );
-
+addText(
+container,
+"Mapa: Chalet\n" +
+"Status: 🟢 Em andamento\n" +
+"Temporada: Temporada atual"
+);
       separator(container);
-
-      addText(
+addText(
         container,
         "### 🔴 TIME A · ⚔️ ATAQUE\n" +
         listPlayers(TEAM_A, "player01")
       );
-
       separator(container);
-
-      addText(
+addText(
         container,
         "### 🔵 TIME B · 🛡️ DEFESA\n" +
         listPlayers(TEAM_B, "player02")
       );
-
-      components.push(
+components.push(
         buttonRow(
           createButton(
             "report",
@@ -684,32 +514,26 @@ function buildPanel(type) {
           )
         )
       );
-
-      break;
+break;
     }
-
-    case "confirm": {
+case "confirm": {
       container = createContainer(
         "CONFIRMAÇÃO DE RESULTADO",
         "PARTIDA #482731"
       );
-
-      addText(
-        container,
-        "**Mapa:** Chalet\n" +
-        "**Resultado informado:** Time A venceu\n" +
-        "**Status:** ⏳ Aguardando confirmação"
-      );
-
+addText(
+container,
+"Mapa: Chalet\n" +
+"Resultado informado: Time A venceu\n" +
+"Status: ⏳ Aguardando confirmação"
+);
       separator(container);
-
-      addText(
-        container,
-        "O capitão **player02** precisa confirmar " +
-        "ou contestar o resultado."
-      );
-
-      components.push(
+addText(
+container,
+"O capitão player02 precisa confirmar " +
+"ou contestar o resultado."
+);
+components.push(
         buttonRow(
           createButton(
             "confirm",
@@ -725,53 +549,42 @@ function buildPanel(type) {
           )
         )
       );
-
-      break;
+break;
     }
-
-    case "result": {
+case "result": {
       container = createContainer(
         "PARTIDA FINALIZADA",
         "PARTIDA #482731"
       );
-
-      addText(
-        container,
-        "**Mapa:** Chalet\n" +
-        "**Status:** ✅ Finalizada\n" +
-        "🏆 **Time A venceu!**"
-      );
-
+addText(
+container,
+"Mapa: Chalet\n" +
+"Status: ✅ Finalizada\n" +
+"🏆 Time A venceu!"
+);
       separator(container);
-
-      addText(
+addText(
         container,
         "### 🏆 VENCEDORES · +5 PONTOS\n" +
         listPlayers(TEAM_A, "player01")
       );
-
       separator(container);
-
-      addText(
+addText(
         container,
         "### DERROTADOS · −3 PONTOS\n" +
         listPlayers(TEAM_B, "player02")
       );
-
-      break;
+break;
     }
-
-    default:
-      throw new Error(
-        "INVALID_PREVIEW_PANEL"
-      );
+default:
+      throw new Error("INVALID_PREVIEW_PANEL");
   }
-
-  return {
+return {
     components: [
       container,
       ...components
     ],
+    files,
     flags:
       MessageFlags.IsComponentsV2 |
       MessageFlags.Ephemeral,
@@ -780,11 +593,9 @@ function buildPanel(type) {
     }
   };
 }
-
 // ==========================================
 // MENU DE NAVEGAÇÃO
 // ==========================================
-
 function createNavigation() {
   return new ActionRowBuilder()
     .addComponents(
@@ -802,13 +613,9 @@ function createNavigation() {
         )
     );
 }
-
-function createPreviewMessage(
-  type = "queue"
-) {
-  const panel = buildPanel(type);
-
-  return {
+async function createPreviewMessage(type = "queue") {
+  const panel = await buildPanel(type);
+return {
     ...panel,
     components: [
       ...panel.components,
@@ -816,18 +623,15 @@ function createPreviewMessage(
     ]
   };
 }
-
 // ==========================================
 // COMANDO /PREVIEW
 // ==========================================
-
 const command = new SlashCommandBuilder()
   .setName("preview")
   .setDescription(
     "Visualizar os painéis do InviSixTational."
   )
   .setDMPermission(false);
-
 async function executePreview(interaction) {
   if (!isStaff(interaction)) {
     return interaction.reply({
@@ -836,47 +640,44 @@ async function executePreview(interaction) {
       flags: MessageFlags.Ephemeral
     });
   }
-
-  return interaction.reply(
-    createPreviewMessage()
-  );
+await interaction.deferReply({
+    flags: MessageFlags.Ephemeral
+  });
+  const payload = await createPreviewMessage();
+// A resposta já é privada pelo deferReply.
+  return interaction.editReply({
+    ...payload,
+    flags: MessageFlags.IsComponentsV2
+  });
 }
-
 // ==========================================
 // MENU INTERATIVO
 // ==========================================
-
 async function handlePreviewSelect(interaction) {
   if (!isStaff(interaction)) {
     return interaction.reply({
-      content:
-        "Acesso restrito à Staff.",
+      content: "Acesso restrito à Staff.",
       flags: MessageFlags.Ephemeral
     });
   }
-
   const type = interaction.values?.[0];
-
-  if (
-    !PANELS.some(
-      panel => panel.value === type
-    )
-  ) {
+if (!PANELS.some(panel => panel.value === type)) {
     return interaction.reply({
       content: "Painel inválido.",
       flags: MessageFlags.Ephemeral
     });
   }
-
-  return interaction.update(
-    createPreviewMessage(type)
-  );
+  await interaction.deferUpdate();
+  const payload = await createPreviewMessage(type);
+return interaction.editReply({
+    ...payload,
+    flags: MessageFlags.IsComponentsV2,
+    attachments: []
+  });
 }
-
 // ==========================================
 // EXPORTAÇÕES
 // ==========================================
-
 module.exports = {
   command,
   executePreview,
