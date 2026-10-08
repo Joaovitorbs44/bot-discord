@@ -1,3 +1,4 @@
+
 const {
   Client,
   GatewayIntentBits,
@@ -60,11 +61,13 @@ const {
 } = require("../scripts/queue");
 
 const {
-  handleReadyCheck
+  handleReadyCheck,
+  restoreReadyCheck
 } = require("../scripts/ready");
 
 const {
-  handleCaptainVote
+  handleCaptainVote,
+  restoreCaptainVote
 } = require("../scripts/captains");
 
 const {
@@ -78,7 +81,8 @@ const {
 } = require("../scripts/mapVeto");
 
 const {
-  handleSideChoice
+  handleSideChoice,
+  restoreSideChoice
 } = require("../scripts/side");
 
 // ==========================================
@@ -106,8 +110,7 @@ initializeDatabase();
 
 const pendingAccessForms = new Map();
 
-const ACCESS_FORM_TIMEOUT_MS =
-  15 * 60 * 1000;
+const ACCESS_FORM_TIMEOUT_MS = 15 * 60 * 1000;
 
 // ==========================================
 // RANKS R6
@@ -136,21 +139,14 @@ const client = new Client({
 });
 
 // ==========================================
-// CONTROLE DE INICIALIZAÇÃO
+// INICIALIZAÇÃO
 // ==========================================
 
 let matchmakingInitialized = false;
 let matchmakingInitializing = false;
 
-// ==========================================
-// RECUPERAÇÃO DO MATCHMAKING
-// ==========================================
-
 async function initializeMatchmaking(readyClient) {
-  if (
-    matchmakingInitialized ||
-    matchmakingInitializing
-  ) {
+  if (matchmakingInitialized || matchmakingInitializing) {
     return;
   }
 
@@ -162,34 +158,22 @@ async function initializeMatchmaking(readyClient) {
 
   try {
     // ======================================
-    // 1. RECUPERAR JOGADORES
+    // 1. RESTAURAR JOGADORES
     // ======================================
 
-    const restored = queueState.restoreQueueState();
+    const recovery = queueState.restoreQueueState();
 
     console.log(
-      `Jogadores recuperados: ${restored.restored}`
+      `Jogadores recuperados: ${recovery.restored}`
     );
 
     console.log(
-      `Etapa recuperada: ${restored.stage}`
+      `Etapa encontrada: ${recovery.stage}`
     );
 
     // ======================================
-    // 2. RECUPERAR PAINEL
+    // 2. RESTAURAR PAINEL DA FILA
     // ======================================
-
-    /*
-     * IMPORTANTE:
-     *
-     * restoreQueuePanel() precisa estar
-     * atualizado para NÃO chamar:
-     *
-     * queueState.clearQueue()
-     * queueState.unlockQueue()
-     *
-     * Essa correção será feita em queue.js.
-     */
 
     const queueMessage = await restoreQueuePanel(
       readyClient
@@ -197,201 +181,81 @@ async function initializeMatchmaking(readyClient) {
 
     if (queueMessage) {
       console.log(
-        `Painel da fila localizado: ${queueMessage.id}`
+        `Painel da fila restaurado: ${queueMessage.id}`
       );
     } else {
       console.warn(
-        "Painel da fila não foi localizado."
+        "Não foi possível localizar o painel da fila."
       );
     }
 
     // ======================================
-    // 3. RECUPERAR ETAPA ATIVA
+    // 3. RESTAURAR ETAPA ATIVA
     // ======================================
 
     const session = queueState.getActiveSession();
 
     if (!session) {
       console.log(
-        "Nenhuma sessão ativa para recuperar."
+        "Nenhuma sessão ativa encontrada."
       );
+    } else {
+      const recoveryHandlers = {
+        ready_check: restoreReadyCheck,
+        captain_vote: restoreCaptainVote,
+        draft: restoreDraft,
+        map_veto: restoreMapVeto,
+        side_choice: restoreSideChoice
+      };
 
-      matchmakingInitialized = true;
-      return;
-    }
+      const restoreHandler =
+        recoveryHandlers[session.stage];
 
-    switch (session.stage) {
-      // ====================================
-      // FILA
-      // ====================================
-
-      case "queue": {
+      if (session.stage === "queue") {
         console.log(
-          "Sessão restaurada na fila."
+          "Fila restaurada e disponível."
         );
-
-        break;
-      }
-
-      // ====================================
-      // READY CHECK
-      // ====================================
-
-      case "ready_check": {
-        console.warn(
-          "Ready Check persistido encontrado."
-        );
-
-        console.warn(
-          "A recuperação do Ready Check será integrada em ready.js."
-        );
-
-        /*
-         * Mantemos a sessão bloqueada.
-         *
-         * Não removemos jogadores e
-         * não reiniciamos a fila.
-         */
-
-        break;
-      }
-
-      // ====================================
-      // VOTAÇÃO DE CAPITÃES
-      // ====================================
-
-      case "captain_vote": {
-        console.warn(
-          "Votação de capitães persistida encontrada."
-        );
-
-        console.warn(
-          "A recuperação da votação será integrada em captains.js."
-        );
-
-        break;
-      }
-
-      // ====================================
-      // DRAFT
-      // ====================================
-
-      case "draft": {
+      } else if (
+        session.stage === "playing"
+      ) {
         console.log(
-          "Recuperando draft..."
+          "Partida em andamento encontrada."
         );
 
-        if (typeof restoreDraft !== "function") {
-          console.warn(
-            "restoreDraft() não está disponível."
-          );
-
-          break;
-        }
+        console.log(
+          "Os resultados continuam registrados no banco de dados."
+        );
+      } else if (
+        typeof restoreHandler === "function"
+      ) {
+        console.log(
+          `Recuperando etapa: ${session.stage}`
+        );
 
         try {
-          const success = await restoreDraft(
+          const restored = await restoreHandler(
             readyClient
           );
 
-          console.log(
-            success
-              ? "Draft recuperado."
-              : "Não foi possível recuperar o draft."
-          );
+          if (restored) {
+            console.log(
+              `Etapa ${session.stage} recuperada.`
+            );
+          } else {
+            console.warn(
+              `Não foi possível recuperar ${session.stage}.`
+            );
+          }
         } catch (error) {
           console.error(
-            "Erro ao recuperar draft:",
+            `Erro ao recuperar ${session.stage}:`,
             error
           );
         }
-
-        break;
-      }
-
-      // ====================================
-      // VETO DE MAPAS
-      // ====================================
-
-      case "map_veto": {
-        console.log(
-          "Recuperando veto de mapas..."
-        );
-
-        if (typeof restoreMapVeto !== "function") {
-          console.warn(
-            "restoreMapVeto() não está disponível."
-          );
-
-          break;
-        }
-
-        try {
-          const success = await restoreMapVeto(
-            readyClient
-          );
-
-          console.log(
-            success
-              ? "Veto de mapas recuperado."
-              : "Não foi possível recuperar o veto."
-          );
-        } catch (error) {
-          console.error(
-            "Erro ao recuperar veto:",
-            error
-          );
-        }
-
-        break;
-      }
-
-      // ====================================
-      // ESCOLHA DE LADO
-      // ====================================
-
-      case "side_choice": {
+      } else {
         console.warn(
-          "Escolha de lado persistida encontrada."
+          `Etapa sem recuperação: ${session.stage}`
         );
-
-        console.warn(
-          "A recuperação será integrada em side.js."
-        );
-
-        break;
-      }
-
-      // ====================================
-      // PARTIDA CRIADA
-      // ====================================
-
-      case "playing": {
-        console.log(
-          "Sessão de partida em andamento encontrada."
-        );
-
-        /*
-         * As partidas já são registradas
-         * na tabela matches.
-         *
-         * A reconciliação dessa etapa
-         * será feita posteriormente.
-         */
-
-        break;
-      }
-
-      // ====================================
-      // ETAPA DESCONHECIDA
-      // ====================================
-
-      default: {
-        console.warn(
-          `Etapa não reconhecida: ${session.stage}`
-        );
-
-        break;
       }
     }
 
@@ -403,7 +267,7 @@ async function initializeMatchmaking(readyClient) {
       await updateQueuePanel();
     } catch (error) {
       console.error(
-        "Erro ao sincronizar painel da fila:",
+        "Erro ao sincronizar painel:",
         error
       );
     }
@@ -411,7 +275,7 @@ async function initializeMatchmaking(readyClient) {
     matchmakingInitialized = true;
 
     console.log(
-      "Inicialização do matchmaking concluída."
+      "Matchmaking inicializado com sucesso."
     );
   } catch (error) {
     console.error(
@@ -434,9 +298,7 @@ client.once(
       `Bot conectado como ${readyClient.user.tag}`
     );
 
-    await initializeMatchmaking(
-      readyClient
-    );
+    await initializeMatchmaking(readyClient);
   }
 );
 
@@ -482,7 +344,7 @@ client.on(
       }
 
       // ======================================
-      // APROVAR ACESSO
+      // APROVAR
       // ======================================
 
       if (
@@ -495,7 +357,7 @@ client.on(
       }
 
       // ======================================
-      // REJEITAR ACESSO
+      // REJEITAR
       // ======================================
 
       if (
@@ -530,7 +392,7 @@ client.on(
       }
 
       // ======================================
-      // LIMPAR FILA - CONFIRMAR
+      // LIMPAR FILA
       // ======================================
 
       if (
@@ -542,10 +404,6 @@ client.on(
           interaction
         );
       }
-
-      // ======================================
-      // LIMPAR FILA - CANCELAR
-      // ======================================
 
       if (
         interaction.isButton() &&
@@ -569,7 +427,7 @@ client.on(
       }
 
       // ======================================
-      // CAPITÃES
+      // VOTAÇÃO DE CAPITÃES
       // ======================================
 
       if (
@@ -616,7 +474,7 @@ client.on(
       }
 
       // ======================================
-      // INFORMAR RESULTADO
+      // RESULTADOS
       // ======================================
 
       if (
@@ -628,10 +486,6 @@ client.on(
         return handleResultReport(interaction);
       }
 
-      // ======================================
-      // SELECIONAR VENCEDOR
-      // ======================================
-
       if (
         interaction.isButton() &&
         interaction.customId.startsWith(
@@ -640,10 +494,6 @@ client.on(
       ) {
         return handleWinnerSelection(interaction);
       }
-
-      // ======================================
-      // CONFIRMAR RESULTADO
-      // ======================================
 
       if (
         interaction.isButton() &&
@@ -656,10 +506,6 @@ client.on(
         );
       }
 
-      // ======================================
-      // CONTESTAR RESULTADO
-      // ======================================
-
       if (
         interaction.isButton() &&
         interaction.customId.startsWith(
@@ -671,10 +517,6 @@ client.on(
         );
       }
 
-      // ======================================
-      // STAFF DEFINE RESULTADO
-      // ======================================
-
       if (
         interaction.isButton() &&
         interaction.customId.startsWith(
@@ -683,10 +525,6 @@ client.on(
       ) {
         return handleStaffResult(interaction);
       }
-
-      // ======================================
-      // STAFF CANCELA PARTIDA
-      // ======================================
 
       if (
         interaction.isButton() &&
