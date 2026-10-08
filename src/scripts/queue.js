@@ -1,3 +1,4 @@
+
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -5,55 +6,31 @@ const {
   ButtonStyle
 } = require("discord.js");
 
-const db = require(
-  "../database/database"
-);
-
-const config = require(
-  "../config/config"
-);
-
-const queueState = require(
-  "./queueState"
-);
+const db = require("../database/database");
+const config = require("../config/config");
+const queueState = require("./queueState");
 
 const {
   startReadyCheck
-} = require(
-  "./ready"
-);
+} = require("./ready");
 
 const {
   logQueueJoin,
   logQueueLeave
-} = require(
-  "./logs"
-);
+} = require("./logs");
 
-/*
- * Processa os botões
- * da fila.
- */
-async function handleQueue(
-  interaction
-) {
-  const player =
-    db.prepare(`
-      SELECT *
-      FROM players
-      WHERE discord_id = ?
-    `).get(
-      interaction.user.id
-    );
+// ==========================================
+// INTERAÇÕES DA FILA
+// ==========================================
 
-  /*
-   * Somente jogadores
-   * aprovados.
-   */
-  if (
-    !player ||
-    player.access_active !== 1
-  ) {
+async function handleQueue(interaction) {
+  const player = db.prepare(`
+    SELECT *
+    FROM players
+    WHERE discord_id = ?
+  `).get(interaction.user.id);
+
+  if (!player || player.access_active !== 1) {
     return interaction.reply({
       content:
         "Você não possui acesso ao matchmaking.",
@@ -61,12 +38,7 @@ async function handleQueue(
     });
   }
 
-  /*
-   * Jogador banido.
-   */
-  if (
-    player.is_banned === 1
-  ) {
+  if (player.is_banned === 1) {
     return interaction.reply({
       content:
         "Você está impedido de participar do matchmaking.",
@@ -74,13 +46,7 @@ async function handleQueue(
     });
   }
 
-  /*
-   * Durante a formação
-   * ninguém pode entrar/sair.
-   */
-  if (
-    queueState.isQueueLocked()
-  ) {
+  if (queueState.isQueueLocked()) {
     return interaction.reply({
       content:
         "A fila está bloqueada enquanto uma partida está sendo formada.",
@@ -88,24 +54,41 @@ async function handleQueue(
     });
   }
 
-  /*
-   * Cooldown.
-   */
-  const remaining =
-    queueState
-      .getCooldownRemaining(
-        interaction.user.id,
-        config.matchmaking
-          .queueCooldownSeconds
-      );
+  // ========================================
+  // PENALIDADE PERSISTENTE
+  // ========================================
 
-  if (
-    remaining > 0
-  ) {
-    const seconds =
-      Math.ceil(
-        remaining / 1000
-      );
+  const penaltyRemaining =
+    queueState.getPenaltyRemaining(
+      interaction.user.id
+    );
+
+  if (penaltyRemaining > 0) {
+    const minutes = Math.ceil(
+      penaltyRemaining / 60000
+    );
+
+    return interaction.reply({
+      content:
+        `Você possui um cooldown de matchmaking. Tempo restante: **${minutes} minuto(s)**.`,
+      ephemeral: true
+    });
+  }
+
+  // ========================================
+  // COOLDOWN DE BOTÃO
+  // ========================================
+
+  const remaining =
+    queueState.getCooldownRemaining(
+      interaction.user.id,
+      config.matchmaking.queueCooldownSeconds
+    );
+
+  if (remaining > 0) {
+    const seconds = Math.ceil(
+      remaining / 1000
+    );
 
     return interaction.reply({
       content:
@@ -114,42 +97,24 @@ async function handleQueue(
     });
   }
 
-  if (
-    interaction.customId ===
-    "queue_join"
-  ) {
-    return joinQueue(
-      interaction,
-      player
-    );
+  if (interaction.customId === "queue_join") {
+    return joinQueue(interaction, player);
   }
 
-  if (
-    interaction.customId ===
-    "queue_leave"
-  ) {
-    return leaveQueue(
-      interaction
-    );
+  if (interaction.customId === "queue_leave") {
+    return leaveQueue(interaction);
   }
 }
 
-/*
- * Entra na fila.
- */
-async function joinQueue(
-  interaction,
-  player
-) {
-  const requiredPlayers =
-    config.matchmaking
-      .requiredPlayers;
+// ==========================================
+// ENTRAR NA FILA
+// ==========================================
 
-  if (
-    queueState.hasPlayer(
-      interaction.user.id
-    )
-  ) {
+async function joinQueue(interaction, player) {
+  const requiredPlayers =
+    config.matchmaking.requiredPlayers;
+
+  if (queueState.hasPlayer(interaction.user.id)) {
     return interaction.reply({
       content:
         "Você já está na fila.",
@@ -157,34 +122,19 @@ async function joinQueue(
     });
   }
 
-  /*
-   * Verifica se já participa
-   * de uma partida ativa.
-   */
-  const activeMatch =
-    db.prepare(`
-      SELECT
-        matches.match_code
-
-      FROM match_players
-
-      INNER JOIN matches
-        ON matches.id =
-          match_players.match_id
-
-      WHERE
-        match_players.discord_id = ?
-
-        AND matches.status IN (
-          'playing',
-          'pending_confirmation',
-          'disputed'
-        )
-
-      LIMIT 1
-    `).get(
-      interaction.user.id
-    );
+  const activeMatch = db.prepare(`
+    SELECT matches.match_code
+    FROM match_players
+    INNER JOIN matches
+      ON matches.id = match_players.match_id
+    WHERE match_players.discord_id = ?
+      AND matches.status IN (
+        'playing',
+        'pending_confirmation',
+        'disputed'
+      )
+    LIMIT 1
+  `).get(interaction.user.id);
 
   if (activeMatch) {
     return interaction.reply({
@@ -194,10 +144,7 @@ async function joinQueue(
     });
   }
 
-  if (
-    queueState.getSize() >=
-    requiredPlayers
-  ) {
+  if (queueState.getSize() >= requiredPlayers) {
     return interaction.reply({
       content:
         "A fila já está completa.",
@@ -205,17 +152,11 @@ async function joinQueue(
     });
   }
 
-  const added =
-    queueState.addPlayer({
-      discordId:
-        interaction.user.id,
-
-      nickname:
-        player.r6_nickname,
-
-      rank:
-        player.r6_rank
-    });
+  const added = queueState.addPlayer({
+    discordId: interaction.user.id,
+    nickname: player.r6_nickname,
+    rank: player.r6_rank
+  });
 
   if (!added) {
     return interaction.reply({
@@ -225,21 +166,10 @@ async function joinQueue(
     });
   }
 
-  queueState.setCooldown(
-    interaction.user.id
-  );
+  queueState.setCooldown(interaction.user.id);
+  queueState.setQueueMessage(interaction.message);
 
-  /*
-   * Sempre salva a mensagem
-   * correta da fila.
-   */
-  queueState.setQueueMessage(
-    interaction.message
-  );
-
-  await interaction.update(
-    createQueuePanel()
-  );
+  await interaction.update(createQueuePanel());
 
   await interaction.followUp({
     content:
@@ -254,33 +184,25 @@ async function joinQueue(
     requiredPlayers
   );
 
-  /*
-   * 10 jogadores encontrados.
-   */
-  if (
-    queueState.getSize() ===
-    requiredPlayers
-  ) {
+  // ========================================
+  // FILA COMPLETA
+  // ========================================
+
+  if (queueState.getSize() === requiredPlayers) {
     queueState.lockQueue();
 
     await updateQueuePanel();
 
-    const players =
-      queueState.getPlayers();
+    const players = queueState.getPlayers();
 
     try {
       await interaction.followUp({
-        content:
-          createMatchFoundMessage(
-            players
-          ),
+        content: createMatchFoundMessage(players),
 
         allowedMentions: {
-          users:
-            players.map(
-              (player) =>
-                player.discordId
-            )
+          users: players.map(
+            (item) => item.discordId
+          )
         }
       });
 
@@ -311,21 +233,15 @@ async function joinQueue(
   }
 }
 
-/*
- * Sai da fila.
- */
-async function leaveQueue(
-  interaction
-) {
-  const requiredPlayers =
-    config.matchmaking
-      .requiredPlayers;
+// ==========================================
+// SAIR DA FILA
+// ==========================================
 
-  if (
-    !queueState.hasPlayer(
-      interaction.user.id
-    )
-  ) {
+async function leaveQueue(interaction) {
+  const requiredPlayers =
+    config.matchmaking.requiredPlayers;
+
+  if (!queueState.hasPlayer(interaction.user.id)) {
     return interaction.reply({
       content:
         "Você não está na fila.",
@@ -333,21 +249,11 @@ async function leaveQueue(
     });
   }
 
-  queueState.removePlayer(
-    interaction.user.id
-  );
+  queueState.removePlayer(interaction.user.id);
+  queueState.setCooldown(interaction.user.id);
+  queueState.setQueueMessage(interaction.message);
 
-  queueState.setCooldown(
-    interaction.user.id
-  );
-
-  queueState.setQueueMessage(
-    interaction.message
-  );
-
-  await interaction.update(
-    createQueuePanel()
-  );
+  await interaction.update(createQueuePanel());
 
   await interaction.followUp({
     content:
@@ -362,20 +268,14 @@ async function leaveQueue(
   );
 }
 
-/*
- * Mensagem quando os
- * 10 jogadores são encontrados.
- */
-function createMatchFoundMessage(
-  players
-) {
-  const mentions =
-    players
-      .map(
-        (player) =>
-          `<@${player.discordId}>`
-      )
-      .join(" ");
+// ==========================================
+// AVISO DE PARTIDA ENCONTRADA
+// ==========================================
+
+function createMatchFoundMessage(players) {
+  const mentions = players
+    .map((player) => `<@${player.discordId}>`)
+    .join(" ");
 
   return (
     "🔔 **PARTIDA ENCONTRADA!**\n\n" +
@@ -385,22 +285,19 @@ function createMatchFoundMessage(
   );
 }
 
-/*
- * Atualiza o painel atual.
- */
-async function updateQueuePanel() {
-  const queueMessage =
-    queueState.getQueueMessage();
+// ==========================================
+// ATUALIZAR PAINEL
+// ==========================================
 
-  if (!queueMessage) {
+async function updateQueuePanel() {
+  const message = queueState.getQueueMessage();
+
+  if (!message) {
     return false;
   }
 
   try {
-    await queueMessage.edit(
-      createQueuePanel()
-    );
-
+    await message.edit(createQueuePanel());
     return true;
   } catch (error) {
     console.error(
@@ -412,140 +309,94 @@ async function updateQueuePanel() {
   }
 }
 
-/*
- * Restaura o painel depois
- * que o bot inicia/reinicia.
- */
-async function restoreQueuePanel(
-  client
-) {
+// ==========================================
+// RESTAURAR PAINEL
+// ==========================================
+
+async function restoreQueuePanel(client) {
   try {
-    const channel =
-      await client.channels.fetch(
-        config.discord.queueChannelId
-      );
+    // Recupera jogadores e bloqueio do SQLite.
+    const recovery = queueState.restoreQueueState();
+
+    const channel = await client.channels.fetch(
+      config.discord.queueChannelId
+    );
 
     if (
       !channel ||
       !channel.isTextBased() ||
       !channel.messages
     ) {
-      throw new Error(
-        "QUEUE_CHANNEL_INVALID"
-      );
+      throw new Error("QUEUE_CHANNEL_INVALID");
     }
 
-    /*
-     * Como a fila atual é mantida
-     * em memória, depois de restart
-     * começamos novamente com ela
-     * vazia e desbloqueada.
-     */
-    queueState.clearQueue();
-    queueState.unlockQueue();
+    const session = queueState.getActiveSession();
 
-    /*
-     * Procura as mensagens recentes
-     * do canal.
-     */
-    const messages =
-      await channel.messages.fetch({
-        limit: 100
-      });
+    let queueMessage = null;
 
-    /*
-     * Procura mensagens do próprio
-     * bot que tenham os componentes
-     * queue_join / queue_leave.
-     */
-    const queueMessages =
-      messages
-        .filter(
-          (message) =>
-            message.author &&
-            message.author.id ===
-              client.user.id &&
-            isQueuePanelMessage(
-              message
-            )
-        )
-        .sort(
-          (a, b) =>
-            b.createdTimestamp -
-            a.createdTimestamp
+    // Primeiro tenta recuperar pelo ID salvo.
+    if (session && session.message_id) {
+      try {
+        queueMessage = await channel.messages.fetch(
+          session.message_id
         );
 
-    /*
-     * Usa o painel mais recente.
-     */
-    let queueMessage =
-      queueMessages.first();
+        if (
+          !queueMessage ||
+          !isQueuePanelMessage(queueMessage)
+        ) {
+          queueMessage = null;
+        }
+      } catch {
+        queueMessage = null;
+      }
+    }
 
-    /*
-     * Caso não exista painel,
-     * cria automaticamente.
-     */
+    // Procura painéis recentes para reutilização.
+    const messages = await channel.messages.fetch({
+      limit: 100
+    });
+
+    const queueMessages = messages
+      .filter(
+        (message) =>
+          message.author &&
+          message.author.id === client.user.id &&
+          isQueuePanelMessage(message)
+      )
+      .sort(
+        (a, b) =>
+          b.createdTimestamp -
+          a.createdTimestamp
+      );
+
     if (!queueMessage) {
-      queueMessage =
-        await channel.send(
-          createQueuePanel()
-        );
+      queueMessage = queueMessages.first();
+    }
 
-      queueState.setQueueMessage(
-        queueMessage
+    // Cria painel apenas se não encontrar nenhum.
+    if (!queueMessage) {
+      queueMessage = await channel.send(
+        createQueuePanel()
       );
 
       console.log(
         "Novo painel de matchmaking criado."
       );
-
-      return queueMessage;
     }
 
-    /*
-     * Registra a mensagem novamente
-     * no estado em memória.
-     */
-    queueState.setQueueMessage(
-      queueMessage
+    queueState.setQueueMessage(queueMessage);
+
+    await queueMessage.edit(createQueuePanel());
+
+    // Desativa painéis duplicados.
+    const duplicateMessages = queueMessages.filter(
+      (message) => message.id !== queueMessage.id
     );
 
-    /*
-     * Atualiza imediatamente.
-     *
-     * Isso transforma, por exemplo:
-     *
-     * 10/10 + bloqueada
-     *
-     * em:
-     *
-     * 0/10 + aberta
-     */
-    await queueMessage.edit(
-      createQueuePanel()
-    );
-
-    /*
-     * Se houver painéis duplicados
-     * antigos, desativa os botões
-     * deles para ninguém usar
-     * uma interface antiga.
-     */
-    const duplicateMessages =
-      queueMessages.filter(
-        (message) =>
-          message.id !==
-          queueMessage.id
-      );
-
-    for (
-      const duplicate
-      of duplicateMessages.values()
-    ) {
+    for (const duplicate of duplicateMessages.values()) {
       try {
-        await disableOldQueuePanel(
-          duplicate
-        );
+        await disableOldQueuePanel(duplicate);
       } catch (error) {
         console.error(
           `Erro ao desativar painel antigo ${duplicate.id}:`,
@@ -555,7 +406,19 @@ async function restoreQueuePanel(
     }
 
     console.log(
-      `Painel de matchmaking restaurado: ${queueMessage.id}`
+      `Painel restaurado: ${queueMessage.id}`
+    );
+
+    console.log(
+      `Jogadores recuperados: ${recovery.restored}`
+    );
+
+    console.log(
+      `Estado da fila: ${
+        recovery.locked
+          ? "bloqueada"
+          : "aberta"
+      }`
     );
 
     return queueMessage;
@@ -569,258 +432,156 @@ async function restoreQueuePanel(
   }
 }
 
-/*
- * Verifica se uma mensagem
- * é realmente um painel
- * de matchmaking.
- */
-function isQueuePanelMessage(
-  message
-) {
-  if (
-    !message ||
-    !Array.isArray(
-      message.components
-    )
-  ) {
+// ==========================================
+// IDENTIFICAR PAINEL
+// ==========================================
+
+function isQueuePanelMessage(message) {
+  if (!message || !Array.isArray(message.components)) {
     return false;
   }
 
   let hasJoin = false;
   let hasLeave = false;
 
-  for (
-    const row
-    of message.components
-  ) {
-    if (
-      !row ||
-      !Array.isArray(
-        row.components
-      )
-    ) {
+  for (const row of message.components) {
+    if (!row || !Array.isArray(row.components)) {
       continue;
     }
 
-    for (
-      const component
-      of row.components
-    ) {
-      if (
-        component.customId ===
-        "queue_join"
-      ) {
+    for (const component of row.components) {
+      if (component.customId === "queue_join") {
         hasJoin = true;
       }
 
-      if (
-        component.customId ===
-        "queue_leave"
-      ) {
+      if (component.customId === "queue_leave") {
         hasLeave = true;
       }
     }
   }
 
-  return (
-    hasJoin &&
-    hasLeave
-  );
+  return hasJoin && hasLeave;
 }
 
-/*
- * Desativa painel duplicado
- * ou antigo.
- */
-async function disableOldQueuePanel(
-  message
-) {
-  const embed =
-    new EmbedBuilder()
-      .setTitle(
-        "Painel de matchmaking antigo"
-      )
-      .setDescription(
-        "Este painel foi substituído. Utilize o painel de matchmaking mais recente."
-      )
-      .setFooter({
-        text:
-          "Rainbow Six Siege • Matchmaking"
-      });
+// ==========================================
+// DESATIVAR PAINEL ANTIGO
+// ==========================================
 
-  const buttons =
-    new ActionRowBuilder()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId(
-            "queue_old_join"
-          )
-          .setLabel(
-            "Entrar na fila"
-          )
-          .setStyle(
-            ButtonStyle.Success
-          )
-          .setDisabled(
-            true
-          ),
+async function disableOldQueuePanel(message) {
+  const embed = new EmbedBuilder()
+    .setTitle("Painel de matchmaking antigo")
+    .setDescription(
+      "Este painel foi substituído. Utilize o painel de matchmaking mais recente."
+    )
+    .setFooter({
+      text: "Rainbow Six Siege • Matchmaking"
+    });
 
-        new ButtonBuilder()
-          .setCustomId(
-            "queue_old_leave"
-          )
-          .setLabel(
-            "Sair da fila"
-          )
-          .setStyle(
-            ButtonStyle.Secondary
-          )
-          .setDisabled(
-            true
-          )
-      );
+  const buttons = new ActionRowBuilder()
+    .addComponents(
+      new ButtonBuilder()
+        .setCustomId("queue_old_join")
+        .setLabel("Entrar na fila")
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(true),
+
+      new ButtonBuilder()
+        .setCustomId("queue_old_leave")
+        .setLabel("Sair da fila")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true)
+    );
 
   await message.edit({
-    embeds: [
-      embed
-    ],
-
-    components: [
-      buttons
-    ]
+    embeds: [embed],
+    components: [buttons]
   });
 }
 
-/*
- * Cria o painel.
- */
+// ==========================================
+// PAINEL DE MATCHMAKING
+// ==========================================
+
 function createQueuePanel() {
-  const players =
-    queueState.getPlayers();
+  const players = queueState.getPlayers();
 
   const requiredPlayers =
-    config.matchmaking
-      .requiredPlayers;
+    config.matchmaking.requiredPlayers;
 
-  const locked =
-    queueState.isQueueLocked();
+  const locked = queueState.isQueueLocked();
 
-  let playerList =
-    "Nenhum jogador na fila.";
+  let playerList = "Nenhum jogador na fila.";
 
-  if (
-    players.length > 0
-  ) {
-    playerList =
-      players
-        .map(
-          (
-            player,
-            index
-          ) =>
-            `**${index + 1}.** ` +
-            `${player.nickname} — ` +
-            `${player.rank}`
-        )
-        .join("\n");
+  if (players.length > 0) {
+    playerList = players
+      .map(
+        (player, index) =>
+          `**${index + 1}.** ` +
+          `${player.nickname} — ${player.rank}`
+      )
+      .join("\n");
   }
 
-  const embed =
-    new EmbedBuilder()
-      .setTitle(
-        "Matchmaking 5v5"
-      )
-      .setDescription(
-        locked
-          ? "Uma partida está sendo formada. A fila está temporariamente bloqueada."
-          : "Entre na fila para procurar uma partida competitiva."
-      )
-      .addFields(
-        {
-          name:
-            "Jogadores na fila",
+  const embed = new EmbedBuilder()
+    .setTitle("Matchmaking 5v5")
+    .setDescription(
+      locked
+        ? "Uma partida está sendo formada. A fila está temporariamente bloqueada."
+        : "Entre na fila para procurar uma partida competitiva."
+    )
+    .addFields(
+      {
+        name: "Jogadores na fila",
+        value:
+          `${queueState.getSize()}/${requiredPlayers}`,
+        inline: true
+      },
+      {
+        name: "Status",
+        value:
+          locked
+            ? "🔒 Formando partida"
+            : "🟢 Aberta",
+        inline: true
+      },
+      {
+        name: "Fila",
+        value: playerList,
+        inline: false
+      }
+    )
+    .setFooter({
+      text: "Rainbow Six Siege • Matchmaking"
+    });
 
-          value:
-            `${queueState.getSize()}/${requiredPlayers}`,
+  const buttons = new ActionRowBuilder()
+    .addComponents(
+      new ButtonBuilder()
+        .setCustomId("queue_join")
+        .setLabel("Entrar na fila")
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(
+          locked ||
+          queueState.getSize() >= requiredPlayers
+        ),
 
-          inline: true
-        },
-
-        {
-          name:
-            "Status",
-
-          value:
-            locked
-              ? "🔒 Formando partida"
-              : "🟢 Aberta",
-
-          inline: true
-        },
-
-        {
-          name:
-            "Fila",
-
-          value:
-            playerList,
-
-          inline: false
-        }
-      )
-      .setFooter({
-        text:
-          "Rainbow Six Siege • Matchmaking"
-      });
-
-  const buttons =
-    new ActionRowBuilder()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId(
-            "queue_join"
-          )
-          .setLabel(
-            "Entrar na fila"
-          )
-          .setStyle(
-            ButtonStyle.Success
-          )
-          .setDisabled(
-            locked ||
-            queueState.getSize() >=
-              requiredPlayers
-          ),
-
-        new ButtonBuilder()
-          .setCustomId(
-            "queue_leave"
-          )
-          .setLabel(
-            "Sair da fila"
-          )
-          .setStyle(
-            ButtonStyle.Secondary
-          )
-          .setDisabled(
-            locked
-          )
-      );
+      new ButtonBuilder()
+        .setCustomId("queue_leave")
+        .setLabel("Sair da fila")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(locked)
+    );
 
   return {
-    embeds: [
-      embed
-    ],
-
-    components: [
-      buttons
-    ]
+    embeds: [embed],
+    components: [buttons]
   };
 }
 
-/*
- * Compatibilidade.
- */
+// ==========================================
+// COMPATIBILIDADE
+// ==========================================
+
 function getQueue() {
   return queueState.getPlayers();
 }
@@ -829,29 +590,21 @@ function getQueueSize() {
   return queueState.getSize();
 }
 
-function setQueueMessage(
-  message
-) {
-  queueState.setQueueMessage(
-    message
-  );
+function setQueueMessage(message) {
+  queueState.setQueueMessage(message);
 }
 
-function removePlayer(
-  discordId
-) {
-  return queueState.removePlayer(
-    discordId
-  );
+function removePlayer(discordId) {
+  return queueState.removePlayer(discordId);
 }
 
-function removePlayersFromQueue(
-  discordIds
-) {
-  return queueState.removePlayers(
-    discordIds
-  );
+function removePlayersFromQueue(discordIds) {
+  return queueState.removePlayers(discordIds);
 }
+
+// ==========================================
+// EXPORTAÇÕES
+// ==========================================
 
 module.exports = {
   handleQueue,
