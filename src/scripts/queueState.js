@@ -226,4 +226,264 @@ function removePlayer(discordId) {
 
 // ==========================================
 // REMOVER VÁRIOS
-// =================================
+// ==========================================
+
+function removePlayers(discordIds) {
+  if (!Array.isArray(discordIds)) {
+    return 0;
+  }
+
+  let removed = 0;
+
+  for (const discordId of discordIds) {
+    if (removePlayer(discordId)) {
+      removed++;
+    }
+  }
+
+  return removed;
+}
+
+// ==========================================
+// LIMPAR FILA
+// ==========================================
+
+function clearQueue() {
+  const removed = queue.size;
+  const session = getActiveSession();
+
+  if (session) {
+    db.transaction(() => {
+      db.prepare(`
+        DELETE FROM matchmaking_session_players
+        WHERE session_id = ?
+      `).run(session.id);
+
+      db.prepare(`
+        UPDATE matchmaking_sessions
+        SET
+          stage = 'queue',
+          deadline_at = NULL,
+          current_turn_discord_id = NULL,
+          captain_a_discord_id = NULL,
+          captain_b_discord_id = NULL,
+          match_id = NULL,
+          state_json = '{}',
+          updated_at = ?
+        WHERE id = ?
+      `).run(
+        Date.now(),
+        session.id
+      );
+    })();
+  }
+
+  queue.clear();
+  cooldowns.clear();
+  queueLocked = false;
+
+  return removed;
+}
+
+// ==========================================
+// CONSULTAS
+// ==========================================
+
+function hasPlayer(discordId) {
+  return queue.has(discordId);
+}
+
+function getPlayers() {
+  return Array.from(queue.values());
+}
+
+function getSize() {
+  return queue.size;
+}
+
+// ==========================================
+// MENSAGEM DA FILA
+// ==========================================
+
+function setQueueMessage(message) {
+  queueMessage = message;
+
+  if (!message?.id) {
+    return;
+  }
+
+  const session = getOrCreateSession();
+
+  db.prepare(`
+    UPDATE matchmaking_sessions
+    SET
+      message_id = ?,
+      channel_id = ?,
+      updated_at = ?
+    WHERE id = ?
+  `).run(
+    message.id,
+    message.channelId ||
+      config.discord.queueChannelId,
+    Date.now(),
+    session.id
+  );
+}
+
+function getQueueMessage() {
+  return queueMessage;
+}
+
+// ==========================================
+// BLOQUEIO
+// ==========================================
+
+function lockQueue() {
+  queueLocked = true;
+
+  const session = getOrCreateSession();
+
+  if (session.stage === "queue") {
+    updateSession({
+      stage: "ready_check"
+    });
+  }
+}
+
+function unlockQueue() {
+  const session = getActiveSession();
+
+  if (
+    session &&
+    session.stage !== "queue" &&
+    session.stage !== "ready_check"
+  ) {
+    // Não libera a fila enquanto
+    // uma etapa posterior está ativa.
+    queueLocked = true;
+    return false;
+  }
+
+  queueLocked = false;
+
+  if (session?.stage === "ready_check") {
+    updateSession({
+      stage: "queue",
+      deadline_at: null,
+      current_turn_discord_id: null
+    });
+  }
+
+  return true;
+}
+
+function isQueueLocked() {
+  const session = getActiveSession();
+
+  if (session && session.stage !== "queue") {
+    return true;
+  }
+
+  return queueLocked;
+}
+
+// ==========================================
+// COOLDOWN CURTO
+// ==========================================
+
+function setCooldown(discordId) {
+  cooldowns.set(discordId, Date.now());
+}
+
+function getCooldownRemaining(
+  discordId,
+  cooldownSeconds
+) {
+  const lastAction = cooldowns.get(discordId);
+
+  if (!lastAction) {
+    return 0;
+  }
+
+  const remaining =
+    cooldownSeconds * 1000 -
+    (Date.now() - lastAction);
+
+  if (remaining <= 0) {
+    cooldowns.delete(discordId);
+    return 0;
+  }
+
+  return remaining;
+}
+
+function clearCooldown(discordId) {
+  cooldowns.delete(discordId);
+}
+
+function clearCooldowns() {
+  cooldowns.clear();
+}
+
+// ==========================================
+// COOLDOWN POR PENALIDADE
+// ==========================================
+
+function getPenaltyRemaining(discordId) {
+  const penalty = db.prepare(`
+    SELECT expires_at
+    FROM player_cooldowns
+    WHERE discord_id = ?
+  `).get(discordId);
+
+  if (!penalty) {
+    return 0;
+  }
+
+  const remaining =
+    Number(penalty.expires_at) - Date.now();
+
+  if (remaining <= 0) {
+    db.prepare(`
+      DELETE FROM player_cooldowns
+      WHERE discord_id = ?
+    `).run(discordId);
+
+    return 0;
+  }
+
+  return remaining;
+}
+
+// ==========================================
+// EXPORTAÇÕES
+// ==========================================
+
+module.exports = {
+  addPlayer,
+  removePlayer,
+  removePlayers,
+  clearQueue,
+
+  hasPlayer,
+  getPlayers,
+  getSize,
+
+  setQueueMessage,
+  getQueueMessage,
+
+  lockQueue,
+  unlockQueue,
+  isQueueLocked,
+
+  setCooldown,
+  getCooldownRemaining,
+  clearCooldown,
+  clearCooldowns,
+
+  getActiveSession,
+  getOrCreateSession,
+  updateSession,
+  restoreQueueState,
+  getPenaltyRemaining
+};
