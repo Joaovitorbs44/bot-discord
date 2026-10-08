@@ -1,3 +1,4 @@
+
 const {
   Client,
   GatewayIntentBits,
@@ -156,51 +157,91 @@ const pendingAccessForms =
 // ==========================================
 
 const R6_RANKS = [
-  {
-    label: "Cobre",
-    value: "Cobre"
-  },
-  {
-    label: "Bronze",
-    value: "Bronze"
-  },
-  {
-    label: "Prata",
-    value: "Prata"
-  },
-  {
-    label: "Ouro",
-    value: "Ouro"
-  },
-  {
-    label: "Platina",
-    value: "Platina"
-  },
-  {
-    label: "Esmeralda",
-    value: "Esmeralda"
-  },
-  {
-    label: "Diamante",
-    value: "Diamante"
-  },
-  {
-    label: "Campeão",
-    value: "Campeão"
-  }
+  { label: "Cobre", value: "Cobre" },
+  { label: "Bronze", value: "Bronze" },
+  { label: "Prata", value: "Prata" },
+  { label: "Ouro", value: "Ouro" },
+  { label: "Platina", value: "Platina" },
+  { label: "Esmeralda", value: "Esmeralda" },
+  { label: "Diamante", value: "Diamante" },
+  { label: "Campeão", value: "Campeão" }
 ];
 
 // ==========================================
 // CLIENTE DISCORD
 // ==========================================
 
-const client =
-  new Client({
-    intents: [
-      GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMembers
-    ]
-  });
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers
+  ]
+});
+
+// ==========================================
+// INICIALIZAÇÃO DO MATCHMAKING
+// ==========================================
+
+async function initializeMatchmaking(
+  readyClient
+) {
+  console.log(
+    "Inicializando matchmaking..."
+  );
+
+  /*
+   * ETAPA ATUAL:
+   *
+   * Recupera o painel da fila,
+   * preservando o comportamento
+   * já existente.
+   *
+   * A recuperação persistente
+   * de jogadores e etapas será
+   * integrada posteriormente.
+   */
+
+  try {
+    const queueMessage =
+      await restoreQueuePanel(
+        readyClient
+      );
+
+    if (queueMessage) {
+      console.log(
+        "Painel da fila restaurado e sincronizado."
+      );
+    } else {
+      console.warn(
+        "Não foi possível restaurar o painel da fila."
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Erro ao restaurar o painel da fila:",
+      error
+    );
+  }
+
+  /*
+   * FUTURA INTEGRAÇÃO:
+   *
+   * recoveryService:
+   * - recuperar jogadores da fila
+   * - recuperar Ready Check
+   * - recuperar votação
+   * - recuperar draft
+   * - recuperar veto
+   * - recuperar escolha de lado
+   * - reconciliar prazos expirados
+   *
+   * Ainda não é executada.
+   */
+
+  console.log(
+    "Inicialização do matchmaking concluída."
+  );
+}
 
 // ==========================================
 // BOT PRONTO
@@ -208,38 +249,14 @@ const client =
 
 client.once(
   Events.ClientReady,
-  async (
-    readyClient
-  ) => {
+  async (readyClient) => {
     console.log(
       `Bot conectado como ${readyClient.user.tag}`
     );
 
-    /*
-     * Recupera automaticamente
-     * o painel da fila.
-     */
-    try {
-      const queueMessage =
-        await restoreQueuePanel(
-          readyClient
-        );
-
-      if (queueMessage) {
-        console.log(
-          "Fila restaurada e painel sincronizado."
-        );
-      } else {
-        console.warn(
-          "Não foi possível restaurar o painel da fila."
-        );
-      }
-    } catch (error) {
-      console.error(
-        "Erro ao restaurar fila na inicialização:",
-        error
-      );
-    }
+    await initializeMatchmaking(
+      readyClient
+    );
   }
 );
 
@@ -342,7 +359,7 @@ client.on(
       }
 
       // ======================================
-      // LIMPAR FILA - CONFIRMAR
+      // LIMPAR FILA
       // ======================================
 
       if (
@@ -354,10 +371,6 @@ client.on(
           interaction
         );
       }
-
-      // ======================================
-      // LIMPAR FILA - CANCELAR
-      // ======================================
 
       if (
         interaction.isButton() &&
@@ -426,7 +439,7 @@ client.on(
       }
 
       // ======================================
-      // LADO
+      // ESCOLHA DE LADO
       // ======================================
 
       if (
@@ -444,7 +457,7 @@ client.on(
       }
 
       // ======================================
-      // INFORMAR RESULTADO
+      // RESULTADOS
       // ======================================
 
       if (
@@ -458,10 +471,6 @@ client.on(
         );
       }
 
-      // ======================================
-      // SELECIONAR VENCEDOR
-      // ======================================
-
       if (
         interaction.isButton() &&
         interaction.customId.startsWith(
@@ -472,10 +481,6 @@ client.on(
           interaction
         );
       }
-
-      // ======================================
-      // CONFIRMAR RESULTADO
-      // ======================================
 
       if (
         interaction.isButton() &&
@@ -488,10 +493,6 @@ client.on(
         );
       }
 
-      // ======================================
-      // CONTESTAR RESULTADO
-      // ======================================
-
       if (
         interaction.isButton() &&
         interaction.customId.startsWith(
@@ -503,10 +504,6 @@ client.on(
         );
       }
 
-      // ======================================
-      // STAFF DEFINE RESULTADO
-      // ======================================
-
       if (
         interaction.isButton() &&
         interaction.customId.startsWith(
@@ -517,10 +514,6 @@ client.on(
           interaction
         );
       }
-
-      // ======================================
-      // STAFF CANCELA PARTIDA
-      // ======================================
 
       if (
         interaction.isButton() &&
@@ -534,151 +527,85 @@ client.on(
       }
 
       // ======================================
-      // /perfil
+      // COMANDOS
       // ======================================
 
       if (
-        interaction.isChatInputCommand() &&
-        interaction.commandName ===
-          "perfil"
+        interaction.isChatInputCommand()
       ) {
-        return handleProfile(
-          interaction
-        );
-      }
-
-      // ======================================
-      // /ranking
-      // ======================================
-
-      if (
-        interaction.isChatInputCommand() &&
-        interaction.commandName ===
-          "ranking"
-      ) {
-        return handleRanking(
-          interaction
-        );
-      }
-
-      // ======================================
-      // /historico
-      // ======================================
-
-      if (
-        interaction.isChatInputCommand() &&
-        interaction.commandName ===
-          "historico"
-      ) {
-        return handleHistory(
-          interaction
-        );
-      }
-
-      // ======================================
-      // /partida
-      // ======================================
-
-      if (
-        interaction.isChatInputCommand() &&
-        interaction.commandName ===
-          "partida"
-      ) {
-        return handleMatchLookup(
-          interaction
-        );
-      }
-
-      // ======================================
-      // /temporada
-      // ======================================
-
-      if (
-        interaction.isChatInputCommand() &&
-        interaction.commandName ===
-          "temporada"
-      ) {
-        if (
-          typeof handleSeason !==
-          "function"
+        switch (
+          interaction.commandName
         ) {
-          return interaction.reply({
-            content:
-              "O comando de temporada ainda não está configurado.",
-            ephemeral: true
-          });
+          case "perfil":
+            return handleProfile(
+              interaction
+            );
+
+          case "ranking":
+            return handleRanking(
+              interaction
+            );
+
+          case "historico":
+            return handleHistory(
+              interaction
+            );
+
+          case "partida":
+            return handleMatchLookup(
+              interaction
+            );
+
+          case "temporada":
+            if (
+              typeof handleSeason !==
+              "function"
+            ) {
+              return interaction.reply({
+                content:
+                  "O comando de temporada ainda não está configurado.",
+                ephemeral: true
+              });
+            }
+
+            return handleSeason(
+              interaction
+            );
+
+          case "temporadas":
+            if (
+              typeof handleSeasons !==
+              "function"
+            ) {
+              return interaction.reply({
+                content:
+                  "O histórico de temporadas ainda não está configurado.",
+                ephemeral: true
+              });
+            }
+
+            return handleSeasons(
+              interaction
+            );
+
+          case "solicitacoes":
+            return handleSolicitacoes(
+              interaction
+            );
+
+          case "remover-fila":
+            return handleRemoveQueueCommand(
+              interaction
+            );
+
+          case "limpar-fila":
+            return handleClearQueueCommand(
+              interaction
+            );
+
+          default:
+            return;
         }
-
-        return handleSeason(
-          interaction
-        );
-      }
-
-      // ======================================
-      // /temporadas
-      // ======================================
-
-      if (
-        interaction.isChatInputCommand() &&
-        interaction.commandName ===
-          "temporadas"
-      ) {
-        if (
-          typeof handleSeasons !==
-          "function"
-        ) {
-          return interaction.reply({
-            content:
-              "O histórico de temporadas ainda não está configurado.",
-            ephemeral: true
-          });
-        }
-
-        return handleSeasons(
-          interaction
-        );
-      }
-
-      // ======================================
-      // /solicitacoes
-      // ======================================
-
-      if (
-        interaction.isChatInputCommand() &&
-        interaction.commandName ===
-          "solicitacoes"
-      ) {
-        return handleSolicitacoes(
-          interaction
-        );
-      }
-
-      // ======================================
-      // /remover-fila
-      // ======================================
-
-      if (
-        interaction.isChatInputCommand() &&
-        interaction.commandName ===
-          "remover-fila"
-      ) {
-        return handleRemoveQueueCommand(
-          interaction
-        );
-      }
-
-      // ======================================
-      // /limpar-fila
-      // ======================================
-
-      if (
-        interaction.isChatInputCommand() &&
-        interaction.commandName ===
-          "limpar-fila"
-      ) {
-        return handleClearQueueCommand(
-          interaction
-        );
       }
     } catch (error) {
       console.error(
@@ -993,7 +920,7 @@ async function handleAccessRank(
         interaction.user.username,
         form.name,
         form.twitchNickname,
-        form.r6Nickname,
+        r6Nickname,
         r6Rank
       );
 
