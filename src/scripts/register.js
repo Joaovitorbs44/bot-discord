@@ -1,7 +1,9 @@
+
 const {
   REST,
   Routes,
-  SlashCommandBuilder
+  SlashCommandBuilder,
+  PermissionFlagsBits
 } = require("discord.js");
 
 const config = require(
@@ -132,19 +134,38 @@ const commands = [
     .setDescription(
       "Limpa completamente a fila do matchmaking."
     )
+    .toJSON(),
+
+  // ==========================================
+  // REMOVER TIMEOUT DO READY CHECK
+  // ==========================================
+
+  new SlashCommandBuilder()
+    .setName("remover-timeout")
+    .setDescription(
+      "Remove a penalidade de Ready Check de um jogador."
+    )
+    .addUserOption(
+      (option) =>
+        option
+          .setName("jogador")
+          .setDescription(
+            "Jogador que terá o timeout removido."
+          )
+          .setRequired(true)
+    )
     .toJSON()
 ];
 
-const rest =
-  new REST({
-    version: "10"
-  }).setToken(
-    config.discord.token
-  );
+const rest = new REST({
+  version: "10"
+}).setToken(
+  config.discord.token
+);
 
 async function registerCommands() {
   try {
-    await rest.put(
+    const registeredCommands = await rest.put(
       Routes.applicationGuildCommands(
         config.discord.clientId,
         config.discord.guildId
@@ -155,13 +176,15 @@ async function registerCommands() {
     );
 
     console.log(
-      "Comandos registrados."
+      `${registeredCommands.length} comandos registrados com sucesso.`
     );
   } catch (error) {
     console.error(
       "Erro ao registrar comandos:",
       error
     );
+
+    process.exitCode = 1;
   }
 }
 
