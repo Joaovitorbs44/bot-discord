@@ -34,7 +34,7 @@ const COLORS = {
   neutral: 0x2B2D35
 };
 
-const PANEL_MARKER = "INVISIXTATIONAL • MATCHMAKING";
+const PANEL_MARKER = "INVISIX PRO • MATCHMAKING";
 
 // ==========================================
 // INTERAÇÕES DA FILA
