@@ -1,8 +1,12 @@
 
 const {
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
   ActionRowBuilder,
-  StringSelectMenuBuilder
+  StringSelectMenuBuilder,
+  MessageFlags
 } = require("discord.js");
 
 const db = require("../database/database");
@@ -27,6 +31,11 @@ const draftRounds = [
   { captain: "B", picks: 2 },
   { captain: "A", picks: 1 }
 ];
+
+const COLORS = {
+  primary: 0xFF3D2C,
+  success: 0x278451
+};
 
 // ==========================================
 // ESTADO
@@ -58,7 +67,7 @@ function getSession() {
   return queueState.getActiveSession();
 }
 
-function limitText(value, maxLength) {
+function limitText(value, maxLength = 100) {
   const text = String(value || "—");
 
   return text.length <= maxLength
@@ -66,18 +75,27 @@ function limitText(value, maxLength) {
     : text.slice(0, maxLength - 3) + "...";
 }
 
+function safeText(value) {
+  return String(value || "—")
+    .replace(/\\/g, "\\\\")
+    .replace(/([*_~`|])/g, "\\$1")
+    .replace(/@/g, "@\u200b")
+    .slice(0, 80);
+}
+
 function createPlayerList(players, captain) {
   if (!players?.length) {
     return "—";
   }
 
-  return players.map((player) => {
+  return players.map(player => {
     const isCaptain =
       captain?.discordId === player.discordId;
 
     return (
       `${isCaptain ? "👑" : "•"} ` +
-      `${player.nickname} — ${player.rank}`
+      `${safeText(player.nickname)}\n` +
+      `-# ${safeText(player.rank)}`
     );
   }).join("\n");
 }
@@ -106,7 +124,7 @@ function scheduleRoundTimeout() {
   );
 
   roundTimeout = setTimeout(() => {
-    handleDraftTimeout().catch((error) => {
+    handleDraftTimeout().catch(error => {
       console.error(
         "Erro no timeout do draft:",
         error
@@ -114,6 +132,10 @@ function scheduleRoundTimeout() {
     });
   }, remaining);
 }
+
+// ==========================================
+// PERSISTÊNCIA
+// ==========================================
 
 function saveDraftState() {
   const session = getSession();
@@ -197,7 +219,8 @@ async function startDraft(
 
   if (
     !Array.isArray(players) ||
-    players.length !== config.matchmaking.requiredPlayers
+    players.length !==
+      config.matchmaking.requiredPlayers
   ) {
     throw new Error("INVALID_DRAFT_PLAYERS");
   }
@@ -210,10 +233,12 @@ async function startDraft(
     throw new Error("INVALID_DRAFT_CAPTAINS");
   }
 
-  const ids = players.map((player) => player?.discordId);
+  const ids = players.map(
+    player => player?.discordId
+  );
 
   if (
-    ids.some((id) => !id) ||
+    ids.some(id => !id) ||
     new Set(ids).size !== players.length ||
     !ids.includes(firstCaptain.discordId) ||
     !ids.includes(secondCaptain.discordId)
@@ -242,7 +267,7 @@ async function startDraft(
   teamB = [captainB];
 
   availablePlayers = players.filter(
-    (player) =>
+    player =>
       player.discordId !== captainA.discordId &&
       player.discordId !== captainB.discordId
   );
@@ -277,7 +302,7 @@ async function startDraft(
     try {
       await interaction.followUp({
         content:
-          `🎯 O draft de jogadores foi iniciado em <#${channel.id}>.`
+          `🎯 O draft foi iniciado em <#${channel.id}>.`
       });
     } catch (error) {
       console.warn(
@@ -292,7 +317,7 @@ async function startDraft(
 }
 
 // ==========================================
-// PAINEL
+// PAINEL COMPONENTS V2
 // ==========================================
 
 function createDraftPanel() {
@@ -303,50 +328,89 @@ function createDraftPanel() {
   }
 
   const currentCaptain =
-    round.captain === "A" ? captainA : captainB;
+    round.captain === "A"
+      ? captainA
+      : captainB;
 
   if (availablePlayers.length < round.picks) {
-    throw new Error("NOT_ENOUGH_PLAYERS_FOR_DRAFT_ROUND");
+    throw new Error(
+      "NOT_ENOUGH_PLAYERS_FOR_DRAFT_ROUND"
+    );
   }
 
   const deadline = roundDeadline
     ? `<t:${Math.ceil(roundDeadline / 1000)}:R>`
     : `${PICK_TIMEOUT_SECONDS}s`;
 
-  const embed = new EmbedBuilder()
-    .setTitle("Draft 5v5")
-    .setDescription(
-      `É a vez de <@${currentCaptain.discordId}> escolher.\n\n` +
-      `Escolha **${round.picks} jogador${
-        round.picks > 1 ? "es" : ""
-      }**.\n\n` +
-      `⏱️ Tempo restante: **${deadline}**.\n` +
-      "Se o tempo acabar, a escolha será automática."
+  const container = new ContainerBuilder()
+    .setAccentColor(COLORS.primary)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "## INVISIXTATIONAL\n" +
+        "### DRAFT DE JOGADORES · 5V5"
+      )
     )
-    .addFields(
-      {
-        name: `Time A — ${captainA.nickname}`,
-        value: createPlayerList(teamA, captainA),
-        inline: true
-      },
-      {
-        name: `Time B — ${captainB.nickname}`,
-        value: createPlayerList(teamB, captainB),
-        inline: true
-      },
-      {
-        name: "Jogadores disponíveis",
-        value: availablePlayers.map(
-          (player) =>
-            `• ${player.nickname} — ${player.rank}`
-        ).join("\n") || "Nenhum.",
-        inline: false
-      }
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
     )
-    .setFooter({
-      text:
-        `Rodada ${currentRound + 1}/${draftRounds.length}`
-    });
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**Rodada:** ${currentRound + 1}/${draftRounds.length}\n` +
+        `**Vez de escolher:** <@${currentCaptain.discordId}>\n` +
+        `**Escolhas:** ${round.picks} jogador(es)\n` +
+        `**Tempo restante:** ${deadline}`
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### Time A · ${teamA.length}/5\n` +
+        createPlayerList(teamA, captainA)
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### Time B · ${teamB.length}/5\n` +
+        createPlayerList(teamB, captainB)
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "### Jogadores disponíveis\n" +
+        (availablePlayers.length
+          ? availablePlayers.map(
+              player =>
+                `• ${safeText(player.nickname)} · ${safeText(player.rank)}`
+            ).join("\n")
+          : "Nenhum.")
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# Se o tempo terminar, os jogadores serão escolhidos automaticamente."
+      )
+    );
 
   const select = new StringSelectMenuBuilder()
     .setCustomId("draft_pick")
@@ -358,8 +422,11 @@ function createDraftPanel() {
     .setMinValues(round.picks)
     .setMaxValues(round.picks)
     .addOptions(
-      availablePlayers.map((player) => ({
-        label: limitText(player.nickname, 100),
+      availablePlayers.map(player => ({
+        label: limitText(
+          player.nickname,
+          100
+        ),
         description: limitText(
           `Rank: ${player.rank}`,
           100
@@ -369,10 +436,14 @@ function createDraftPanel() {
     );
 
   return {
-    embeds: [embed],
+    content: null,
+    embeds: [],
     components: [
+      container,
       new ActionRowBuilder().addComponents(select)
-    ]
+    ],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] }
   };
 }
 
@@ -383,23 +454,34 @@ function createDraftPanel() {
 function applyPicks(selectedPlayers) {
   const round = getCurrentRound();
 
-  if (!round || selectedPlayers.length !== round.picks) {
-    throw new Error("INVALID_DRAFT_SELECTION");
+  if (
+    !round ||
+    selectedPlayers.length !== round.picks
+  ) {
+    throw new Error(
+      "INVALID_DRAFT_SELECTION"
+    );
   }
 
   const selectedIds = new Set(
-    selectedPlayers.map((player) => player.discordId)
+    selectedPlayers.map(
+      player => player.discordId
+    )
   );
 
   if (selectedIds.size !== round.picks) {
-    throw new Error("DUPLICATED_DRAFT_SELECTION");
+    throw new Error(
+      "DUPLICATED_DRAFT_SELECTION"
+    );
   }
 
   for (const id of selectedIds) {
     if (!availablePlayers.some(
-      (player) => player.discordId === id
+      player => player.discordId === id
     )) {
-      throw new Error("DRAFT_PLAYER_UNAVAILABLE");
+      throw new Error(
+        "DRAFT_PLAYER_UNAVAILABLE"
+      );
     }
   }
 
@@ -410,14 +492,15 @@ function applyPicks(selectedPlayers) {
   }
 
   availablePlayers = availablePlayers.filter(
-    (player) => !selectedIds.has(player.discordId)
+    player => !selectedIds.has(player.discordId)
   );
 
   currentRound++;
 
   roundDeadline =
     currentRound < draftRounds.length
-      ? Date.now() + PICK_TIMEOUT_SECONDS * 1000
+      ? Date.now() +
+        PICK_TIMEOUT_SECONDS * 1000
       : null;
 
   saveDraftState();
@@ -431,7 +514,7 @@ async function handleDraftPick(interaction) {
   if (!draftActive || draftFinishing) {
     return interaction.reply({
       content: "Não existe um draft ativo.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
@@ -440,72 +523,93 @@ async function handleDraftPick(interaction) {
   if (!round) {
     return interaction.reply({
       content: "O draft já terminou.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
   const currentCaptain =
-    round.captain === "A" ? captainA : captainB;
+    round.captain === "A"
+      ? captainA
+      : captainB;
 
-  if (interaction.user.id !== currentCaptain.discordId) {
+  if (
+    interaction.user.id !==
+    currentCaptain.discordId
+  ) {
     return interaction.reply({
       content:
-        `Agora é a vez de **${currentCaptain.nickname}** escolher.`,
-      ephemeral: true
+        `Agora é a vez de **${safeText(currentCaptain.nickname)}** escolher.`,
+      flags: MessageFlags.Ephemeral
     });
   }
 
   if (Date.now() >= roundDeadline) {
     await interaction.reply({
-      content: "O tempo desta rodada terminou.",
-      ephemeral: true
+      content:
+        "O tempo desta rodada terminou.",
+      flags: MessageFlags.Ephemeral
     });
 
     await handleDraftTimeout();
     return;
   }
 
-  if (interaction.values.length !== round.picks) {
+  if (
+    interaction.values.length !==
+    round.picks
+  ) {
     return interaction.reply({
       content:
         `Escolha exatamente ${round.picks} jogador(es).`,
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
-  const selectedIds = new Set(interaction.values);
+  const selectedIds = new Set(
+    interaction.values
+  );
 
   if (selectedIds.size !== round.picks) {
     return interaction.reply({
-      content: "Existem jogadores duplicados.",
-      ephemeral: true
+      content:
+        "Existem jogadores duplicados.",
+      flags: MessageFlags.Ephemeral
     });
   }
 
-  const selectedPlayers = interaction.values.map(
-    (id) => availablePlayers.find(
-      (player) => player.discordId === id
-    )
-  );
+  const selectedPlayers =
+    interaction.values.map(
+      id => availablePlayers.find(
+        player => player.discordId === id
+      )
+    );
 
-  if (selectedPlayers.some((player) => !player)) {
+  if (selectedPlayers.some(
+    player => !player
+  )) {
     return interaction.reply({
       content:
         "Um dos jogadores não está mais disponível.",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 
   clearRoundTimer();
   applyPicks(selectedPlayers);
 
-  if (currentRound >= draftRounds.length) {
+  if (
+    currentRound >=
+    draftRounds.length
+  ) {
     await interaction.deferUpdate();
     await finishDraft(interaction);
     return;
   }
 
-  await interaction.update(createDraftPanel());
+  await interaction.update(
+    createDraftPanel()
+  );
+
   scheduleRoundTimeout();
 }
 
@@ -531,10 +635,15 @@ async function handleDraftTimeout() {
 
   clearRoundTimer();
 
-  // Escolha aleatória, sem repetição.
-  const shuffled = [...availablePlayers];
+  const shuffled = [
+    ...availablePlayers
+  ];
 
-  for (let i = shuffled.length - 1; i > 0; i--) {
+  for (
+    let i = shuffled.length - 1;
+    i > 0;
+    i--
+  ) {
     const j = Math.floor(
       Math.random() * (i + 1)
     );
@@ -544,13 +653,13 @@ async function handleDraftTimeout() {
     ];
   }
 
-  const selectedPlayers = shuffled.slice(
-    0,
-    round.picks
-  );
+  const selectedPlayers =
+    shuffled.slice(0, round.picks);
 
   const captain =
-    round.captain === "A" ? captainA : captainB;
+    round.captain === "A"
+      ? captainA
+      : captainB;
 
   applyPicks(selectedPlayers);
 
@@ -560,7 +669,7 @@ async function handleDraftTimeout() {
         content:
           `⏱️ O tempo de <@${captain.discordId}> terminou.\n` +
           `Escolha automática: **${selectedPlayers.map(
-            (player) => player.nickname
+            player => safeText(player.nickname)
           ).join(", ")}**.`
       });
     } catch (error) {
@@ -571,7 +680,10 @@ async function handleDraftTimeout() {
     }
   }
 
-  if (currentRound >= draftRounds.length) {
+  if (
+    currentRound >=
+    draftRounds.length
+  ) {
     await finishDraft();
     return;
   }
@@ -596,17 +708,23 @@ async function handleDraftTimeout() {
 // FINALIZAR DRAFT
 // ==========================================
 
-async function finishDraft(interaction = null) {
+async function finishDraft(
+  interaction = null
+) {
   if (!draftActive || draftFinishing) {
     return;
   }
 
   if (
-    teamA.length !== config.matchmaking.teamSize ||
-    teamB.length !== config.matchmaking.teamSize ||
+    teamA.length !==
+      config.matchmaking.teamSize ||
+    teamB.length !==
+      config.matchmaking.teamSize ||
     availablePlayers.length !== 0
   ) {
-    throw new Error("INVALID_FINAL_DRAFT_TEAMS");
+    throw new Error(
+      "INVALID_FINAL_DRAFT_TEAMS"
+    );
   }
 
   draftFinishing = true;
@@ -622,9 +740,14 @@ async function finishDraft(interaction = null) {
 
   const session = getSession();
 
-  if (!session || session.id !== draftSessionId) {
+  if (
+    !session ||
+    session.id !== draftSessionId
+  ) {
     draftFinishing = false;
-    throw new Error("DRAFT_SESSION_LOST");
+    throw new Error(
+      "DRAFT_SESSION_LOST"
+    );
   }
 
   db.prepare(`
@@ -657,14 +780,13 @@ async function finishDraft(interaction = null) {
     }
   }
 
-  // O início do veto não depende de uma interação
-  // ainda válida quando o draft termina por timeout.
   const context = interaction || {
     client: draftClient,
-    followUp: async (payload) => {
-      const channel = await draftClient.channels.fetch(
-        config.discord.draftChannelId
-      );
+    followUp: async payload => {
+      const channel =
+        await draftClient.channels.fetch(
+          config.discord.draftChannelId
+        );
 
       return channel.send(payload);
     }
@@ -694,30 +816,69 @@ async function finishDraft(interaction = null) {
 // ==========================================
 
 function createFinishedDraftPanel() {
+  const container = new ContainerBuilder()
+    .setAccentColor(COLORS.success)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "## INVISIXTATIONAL\n" +
+        "### TIMES DEFINIDOS · 5V5"
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "O draft foi concluído. Os dois times estão definidos."
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "### Time A\n" +
+        createPlayerList(
+          teamA,
+          captainA
+        )
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "### Time B\n" +
+        createPlayerList(
+          teamB,
+          captainB
+        )
+      )
+    )
+    .addSeparatorComponents(
+      new SeparatorBuilder()
+        .setSpacing(SeparatorSpacingSize.Small)
+        .setDivider(true)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# Veto de mapas iniciado."
+      )
+    );
+
   return {
-    embeds: [
-      new EmbedBuilder()
-        .setTitle("Times definidos")
-        .setDescription(
-          "O draft foi concluído. Os dois times estão definidos."
-        )
-        .addFields(
-          {
-            name: `Time A — ${captainA.nickname}`,
-            value: createPlayerList(teamA, captainA),
-            inline: true
-          },
-          {
-            name: `Time B — ${captainB.nickname}`,
-            value: createPlayerList(teamB, captainB),
-            inline: true
-          }
-        )
-        .setFooter({
-          text: "Veto de mapas iniciado"
-        })
-    ],
-    components: []
+    content: null,
+    embeds: [],
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] }
   };
 }
 
@@ -728,7 +889,10 @@ function createFinishedDraftPanel() {
 async function restoreDraft(client) {
   const session = getSession();
 
-  if (!session || session.stage !== "draft") {
+  if (
+    !session ||
+    session.stage !== "draft"
+  ) {
     return false;
   }
 
@@ -766,39 +930,57 @@ async function restoreDraft(client) {
 
   teamA = state.teamA;
   teamB = state.teamB;
-  availablePlayers = state.availablePlayers;
+  availablePlayers =
+    state.availablePlayers;
 
-  currentRound = state.currentRound || 0;
+  currentRound =
+    state.currentRound || 0;
+
   draftSessionId = session.id;
   draftClient = client;
-  roundDeadline = session.deadline_at;
+  roundDeadline =
+    session.deadline_at;
 
   draftActive = true;
   draftFinishing = false;
 
   const channelId =
-    state.channelId || config.discord.draftChannelId;
+    state.channelId ||
+    config.discord.draftChannelId;
 
-  const channel = await client.channels.fetch(channelId);
+  const channel =
+    await client.channels.fetch(
+      channelId
+    );
 
-  if (!channel?.isTextBased() || !channel.send) {
-    throw new Error("INVALID_DRAFT_RESTORE_CHANNEL");
+  if (
+    !channel?.isTextBased() ||
+    !channel.send
+  ) {
+    throw new Error(
+      "INVALID_DRAFT_RESTORE_CHANNEL"
+    );
   }
 
-  if (state.messageId && channel.messages) {
+  if (
+    state.messageId &&
+    channel.messages
+  ) {
     try {
-      draftMessage = await channel.messages.fetch(
-        state.messageId
-      );
+      draftMessage =
+        await channel.messages.fetch(
+          state.messageId
+        );
     } catch {
       draftMessage = null;
     }
   }
 
   if (!draftMessage) {
-    draftMessage = await channel.send(
-      createDraftPanel()
-    );
+    draftMessage =
+      await channel.send(
+        createDraftPanel()
+      );
 
     saveDraftState();
   } else {
@@ -807,7 +989,10 @@ async function restoreDraft(client) {
     );
   }
 
-  if (currentRound >= draftRounds.length) {
+  if (
+    currentRound >=
+    draftRounds.length
+  ) {
     console.warn(
       "Draft recuperado na transição final."
     );
@@ -823,7 +1008,9 @@ async function restoreDraft(client) {
     return true;
   }
 
-  if (Date.now() >= roundDeadline) {
+  if (
+    Date.now() >= roundDeadline
+  ) {
     await handleDraftTimeout();
   } else {
     scheduleRoundTimeout();
