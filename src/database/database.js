@@ -1,48 +1,71 @@
+
 const fs = require("fs");
 const path = require("path");
 
-const Database = require(
-  "better-sqlite3"
+const Database = require("better-sqlite3");
+
+// ==========================================
+// CAMINHO DO BANCO DE DADOS
+// ==========================================
+
+const defaultDatabasePath = path.resolve(
+  __dirname,
+  "../../data/database.sqlite"
 );
 
-const databasePath =
-  path.join(
-    __dirname,
-    "../../data/database.sqlite"
-  );
+const databasePath = process.env.DATABASE_PATH
+  ? path.resolve(process.env.DATABASE_PATH)
+  : defaultDatabasePath;
 
-/*
- * Cria a pasta data automaticamente
- * caso ela ainda não exista.
- */
+// ==========================================
+// DIRETÓRIO PERSISTENTE
+// ==========================================
+
 fs.mkdirSync(
-  path.dirname(
-    databasePath
-  ),
+  path.dirname(databasePath),
   {
     recursive: true
   }
 );
 
-const db =
-  new Database(
-    databasePath
+// ==========================================
+// CONEXÃO SQLITE
+// ==========================================
+
+const db = new Database(databasePath, {
+  fileMustExist: false,
+  timeout: 10000
+});
+
+// ==========================================
+// CONFIGURAÇÕES SQLITE
+// ==========================================
+
+db.pragma("journal_mode = WAL");
+
+db.pragma("foreign_keys = ON");
+
+db.pragma("busy_timeout = 10000");
+
+db.pragma("synchronous = NORMAL");
+
+// ==========================================
+// VERIFICAÇÃO
+// ==========================================
+
+const foreignKeysEnabled =
+  db.pragma("foreign_keys", {
+    simple: true
+  });
+
+if (foreignKeysEnabled !== 1) {
+  throw new Error(
+    "Não foi possível habilitar foreign keys no SQLite."
   );
+}
 
-/*
- * WAL melhora a forma como
- * o SQLite trabalha com leituras
- * e gravações.
- */
-db.pragma(
-  "journal_mode = WAL"
-);
-
-/*
- * Ativa foreign keys.
- */
-db.pragma(
-  "foreign_keys = ON"
-);
+// ==========================================
+// EXPORTAÇÃO
+// ==========================================
 
 module.exports = db;
