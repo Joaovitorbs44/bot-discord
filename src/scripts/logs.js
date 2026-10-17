@@ -1,15 +1,23 @@
+
 const {
   EmbedBuilder
 } = require("discord.js");
 
-const config = require(
-  "../config/config"
-);
+const config = require("../config/config");
 
-/*
- * Envia um log para o canal
- * configurado da Staff.
- */
+// ==========================================
+// CONTROLE DE ERROS DE ACESSO
+// ==========================================
+
+const ACCESS_RETRY_MS = 5 * 60 * 1000;
+
+let blockedUntil = 0;
+let blockedChannelId = null;
+
+// ==========================================
+// ENVIAR LOG
+// ==========================================
+
 async function sendLog(
   client,
   {
@@ -19,50 +27,54 @@ async function sendLog(
     footer = null
   }
 ) {
-  if (
-    !client ||
-    !config.discord.logChannelId
-  ) {
+  const channelId =
+    config.discord?.logChannelId;
+
+  if (!client || !channelId) {
+    return false;
+  }
+
+  if (blockedChannelId !== channelId) {
+    blockedChannelId = channelId;
+    blockedUntil = 0;
+  }
+
+  if (Date.now() < blockedUntil) {
     return false;
   }
 
   try {
     const channel =
-      await client.channels.fetch(
-        config.discord.logChannelId
-      );
+      await client.channels.fetch(channelId);
 
     if (
       !channel ||
-      !channel.isTextBased()
+      !channel.isTextBased() ||
+      typeof channel.send !== "function"
     ) {
       console.error(
-        "Canal de logs não encontrado ou não é um canal de texto."
+        `[Logs] Canal ${channelId} não encontrado ou não aceita mensagens.`
       );
+
+      blockedUntil =
+        Date.now() + ACCESS_RETRY_MS;
 
       return false;
     }
 
-    const embed =
-      new EmbedBuilder()
-        .setTitle(
-          title || "Log"
-        )
-        .setTimestamp();
+    const embed = new EmbedBuilder()
+      .setTitle(title || "Log")
+      .setTimestamp();
 
     if (description) {
-      embed.setDescription(
-        description
-      );
+      embed.setDescription(description);
     }
 
     if (
       Array.isArray(fields) &&
       fields.length > 0
     ) {
-      embed.addFields(
-        fields
-      );
+      embed.addFields(fields);
     }
 
     if (footer) {
@@ -75,162 +87,160 @@ async function sendLog(
       embeds: [embed]
     });
 
+    blockedUntil = 0;
+
     return true;
   } catch (error) {
-    console.error(
-      "Erro ao enviar log:",
-      error
-    );
+    if (
+      [50001, 50013, 10003].includes(
+        Number(error.code)
+      )
+    ) {
+      blockedUntil =
+        Date.now() + ACCESS_RETRY_MS;
+
+      console.error(
+        `[Logs] Sem acesso ao canal ${channelId} ` +
+        `(Discord ${error.code}). ` +
+        "Confira o ID e as permissões Ver canal, " +
+        "Enviar mensagens e Inserir links. " +
+        "Nova tentativa em 5 minutos."
+      );
+    } else {
+      console.error(
+        "Erro ao enviar log:",
+        error
+      );
+    }
 
     return false;
   }
 }
 
-/*
- * Log de entrada na fila.
- */
+// ==========================================
+// ENTRADA NA FILA
+// ==========================================
+
 async function logQueueJoin(
   interaction,
   player,
   queueSize,
   requiredPlayers
 ) {
-  return sendLog(
-    interaction.client,
-    {
-      title:
-        "Jogador entrou na fila",
+  return sendLog(interaction.client, {
+    title: "Jogador entrou na fila",
 
-      description:
-        `<@${interaction.user.id}> entrou na fila do matchmaking.`,
+    description:
+      `<@${interaction.user.id}> entrou na fila do matchmaking.`,
 
-      fields: [
-        {
-          name: "Nickname R6",
-          value:
-            player.r6_nickname || "—",
-          inline: true
-        },
-        {
-          name: "Rank",
-          value:
-            player.r6_rank || "—",
-          inline: true
-        },
-        {
-          name: "Fila",
-          value:
-            `${queueSize}/${requiredPlayers}`,
-          inline: true
-        }
-      ]
-    }
-  );
+    fields: [
+      {
+        name: "Nickname R6",
+        value: player.r6_nickname || "—",
+        inline: true
+      },
+      {
+        name: "Rank",
+        value: player.r6_rank || "—",
+        inline: true
+      },
+      {
+        name: "Fila",
+        value: `${queueSize}/${requiredPlayers}`,
+        inline: true
+      }
+    ]
+  });
 }
 
-/*
- * Log de saída da fila.
- */
+// ==========================================
+// SAÍDA DA FILA
+// ==========================================
+
 async function logQueueLeave(
   interaction,
   queueSize,
   requiredPlayers
 ) {
-  return sendLog(
-    interaction.client,
-    {
-      title:
-        "Jogador saiu da fila",
+  return sendLog(interaction.client, {
+    title: "Jogador saiu da fila",
 
-      description:
-        `<@${interaction.user.id}> saiu da fila do matchmaking.`,
+    description:
+      `<@${interaction.user.id}> saiu da fila do matchmaking.`,
 
-      fields: [
-        {
-          name: "Fila",
-          value:
-            `${queueSize}/${requiredPlayers}`,
-          inline: true
-        }
-      ]
-    }
-  );
+    fields: [
+      {
+        name: "Fila",
+        value: `${queueSize}/${requiredPlayers}`,
+        inline: true
+      }
+    ]
+  });
 }
 
-/*
- * Log de remoção manual
- * realizada pela Staff.
- */
+// ==========================================
+// REMOÇÃO PELA STAFF
+// ==========================================
+
 async function logQueueRemoval(
   interaction,
   targetUser
 ) {
-  return sendLog(
-    interaction.client,
-    {
-      title:
-        "Jogador removido da fila",
+  return sendLog(interaction.client, {
+    title: "Jogador removido da fila",
 
-      description:
-        `<@${targetUser.id}> foi removido manualmente da fila.`,
+    description:
+      `<@${targetUser.id}> foi removido manualmente da fila.`,
 
-      fields: [
-        {
-          name: "Removido por",
-          value:
-            `<@${interaction.user.id}>`,
-          inline: true
-        },
-        {
-          name: "Jogador",
-          value:
-            `<@${targetUser.id}>`,
-          inline: true
-        }
-      ]
-    }
-  );
+    fields: [
+      {
+        name: "Removido por",
+        value: `<@${interaction.user.id}>`,
+        inline: true
+      },
+      {
+        name: "Jogador",
+        value: `<@${targetUser.id}>`,
+        inline: true
+      }
+    ]
+  });
 }
 
-/*
- * Log de Ready Check iniciado.
- */
+// ==========================================
+// READY CHECK INICIADO
+// ==========================================
+
 async function logReadyCheckStarted(
   client,
   players
 ) {
-  const playerList =
-    players
-      .map(
-        (player) =>
-          `<@${player.discordId}>`
-      )
-      .join("\n");
+  const playerList = players
+    .map(
+      player => `<@${player.discordId}>`
+    )
+    .join("\n");
 
-  return sendLog(
-    client,
-    {
-      title:
-        "Ready Check iniciado",
+  return sendLog(client, {
+    title: "Ready Check iniciado",
 
-      description:
-        "A fila atingiu o número necessário de jogadores.",
+    description:
+      "A fila atingiu o número necessário de jogadores.",
 
-      fields: [
-        {
-          name: "Jogadores",
-          value:
-            playerList || "—",
-          inline: false
-        }
-      ]
-    }
-  );
+    fields: [
+      {
+        name: "Jogadores",
+        value: playerList || "—",
+        inline: false
+      }
+    ]
+  });
 }
 
-/*
- * Log de Ready Check expirado.
- */
+// ==========================================
+// READY CHECK EXPIRADO
+// ==========================================
+
 async function logReadyCheckTimeout(
   client,
   missingPlayers
@@ -239,33 +249,31 @@ async function logReadyCheckTimeout(
     missingPlayers.length > 0
       ? missingPlayers
           .map(
-            (player) =>
+            player =>
               `<@${player.discordId}> — ${player.nickname}`
           )
           .join("\n")
       : "Nenhum.";
 
-  return sendLog(
-    client,
-    {
-      title:
-        "Ready Check expirado",
+  return sendLog(client, {
+    title: "Ready Check expirado",
 
-      description:
-        "Nem todos os jogadores confirmaram dentro do tempo.",
+    description:
+      "Nem todos os jogadores confirmaram dentro do tempo.",
 
-      fields: [
-        {
-          name:
-            "Removidos da fila",
-          value:
-            playerList,
-          inline: false
-        }
-      ]
-    }
-  );
+    fields: [
+      {
+        name: "Removidos da fila",
+        value: playerList,
+        inline: false
+      }
+    ]
+  });
 }
+
+// ==========================================
+// EXPORTAÇÕES
+// ==========================================
 
 module.exports = {
   sendLog,
