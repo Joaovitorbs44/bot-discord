@@ -1,3 +1,4 @@
+
 const {
   Client,
   GatewayIntentBits,
@@ -23,6 +24,16 @@ const handleReject = require("../scripts/reject");
 const handleProfile = require("../scripts/profile");
 const handleRanking = require("../scripts/ranking");
 const handleSolicitacoes = require("../scripts/solicitacoes");
+
+// ==========================================
+// GERENCIAMENTO MANUAL DE PONTOS
+// ==========================================
+
+const handlePoints = require("../scripts/points");
+
+// ==========================================
+// ADMINISTRAÇÃO DA FILA
+// ==========================================
 
 const {
   handleClearQueueCommand,
@@ -655,7 +666,7 @@ client.on(
       }
 
       // ======================================
-      // COMANDOS
+      // COMANDOS SLASH
       // ======================================
 
       if (
@@ -674,6 +685,15 @@ client.on(
 
           case "ranking":
             return handleRanking(
+              interaction
+            );
+
+          // ==================================
+          // GERENCIAMENTO DE PONTOS
+          // ==================================
+
+          case "pontos":
+            return handlePoints(
               interaction
             );
 
