@@ -288,6 +288,13 @@ async function initializeMatchmaking(readyClient) {
       );
     }
 
+    try {
+      const { restoreMatchPublications } = require("../scripts/match");
+      await restoreMatchPublications(readyClient);
+    } catch (error) {
+      console.error("Erro ao recuperar publicações de partidas:", error);
+    }
+
     matchmakingInitialized = true;
 
     console.log(
