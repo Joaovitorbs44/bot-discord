@@ -157,7 +157,7 @@ function createMatchPanel(match, data, season) {
     .setAccentColor(COLORS.primary)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "## INVISIX PRO\n" +
+        "## INVI SIX PRO\n" +
         "### PARTIDA COMPETITIVA · 5V5"
       )
     )
