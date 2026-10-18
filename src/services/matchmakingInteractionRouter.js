@@ -5,6 +5,7 @@ const {MessageFlags} = require("discord.js");
 const sessions = require("./matchmakingSessions");
 const ready = require("./readyCheckSessions");
 const panels = require("./readyCheckPanels");
+const captains = require("./captainVoteSessions");
 
 async function reject(interaction, content) {
   const payload = {content, flags:MessageFlags.Ephemeral};
@@ -49,6 +50,26 @@ async function handleSessionComponent(interaction) {
   }
   if (parsed.stage === "ready_check" && interaction.isButton()) {
     await handleReady(interaction,parsed);
+    return true;
+  }
+  if (parsed.stage === "captain_vote" && interaction.isStringSelectMenu() &&
+      parsed.action === "vote") {
+    const choice = interaction.values?.[0];
+    const result = captains.vote(parsed.sessionId,interaction.guildId,interaction.user.id,choice);
+    if (!result.ok) {
+      await reject(interaction,{
+        stale:"A votação deste lobby não está ativa.",
+        not_member:"Você não participa deste lobby.",
+        not_eligible:"O jogador escolhido não é elegível.",
+        already_voted:"Você já votou."
+      }[result.reason] || "Voto não registrado.");
+      return true;
+    }
+    await reject(interaction,`Voto registrado (${result.count}/${result.total}).`);
+    if (result.count === result.total) {
+      try { captains.finish(parsed.sessionId); }
+      catch (error) { console.error("[MULTILOBBY] Captain vote handoff failed:",error); }
+    }
     return true;
   }
   await reject(interaction,"Esta etapa do multi-lobby ainda não foi habilitada.");
