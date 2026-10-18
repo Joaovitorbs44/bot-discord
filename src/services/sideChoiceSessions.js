@@ -12,6 +12,7 @@ function choose(sessionId,guildId,actorId,side){
   if(!state.selectedMap)return {ok:false,reason:"missing_map"};
   const sideA=side==="attack"?"Ataque":"Defesa";
   const sideB=side==="attack"?"Defesa":"Ataque";
+  if(state.sideA || state.sideB)return {ok:false,reason:"already_chosen"};
   const updated=sessions.updateState(sessionId,"side_choice",{sideA,sideB,sideChosenAt:Date.now()});
   return updated?{ok:true,sideA,sideB,map:state.selectedMap}:{ok:false,reason:"stale"};
  })();
