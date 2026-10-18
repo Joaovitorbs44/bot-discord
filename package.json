@@ -7,7 +7,8 @@
     "start": "node src/scripts/register.js && node src/app/index.js",
     "dev": "node --watch src/app/index.js",
     "commands": "node src/scripts/register.js",
-    "setup": "node src/scripts/setup.js"
+    "setup": "node src/scripts/setup.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",
