@@ -1236,46 +1236,38 @@ async function buildPanel(session) {
     case "result": {
       ensureResult(session);
       const loser = session.winner === "A" ? "B" : "A";
-      const playerLine = (id, index) => {
-        const player = PLAYERS.find(p => p.id === id);
-        const captain = session.captains.includes(id) ? "  👑" : "";
-        return String(index + 1).padStart(2, "0") + "  " +
-          id.padEnd(11, " ") + "  " +
-          (player?.rank || "—") + captain;
-      };
-      const winners = session.teams[session.winner]
-        .map(playerLine).join("\n");
-      const losers = session.teams[loser]
-        .map(playerLine).join("\n");
 
-      container = new ContainerBuilder()
-        .setAccentColor(PRIMARY);
+      // One native text row per player. No code blocks or tightly packed columns.
+      const addRoster = (team, label, points) => {
+        addText(
+          container,
+          "### " + label + "  ·  " + points + " PTS"
+        );
+        session.teams[team].forEach((id, index) => {
+          const player = PLAYERS.find(p => p.id === id);
+          const captain = session.captains.includes(id) ? "  👑" : "";
+          addText(
+            container,
+            "**" + String(index + 1).padStart(2, "0") +
+            "  ·  " + id + "**" + captain + "\n" +
+            "-# " + (player?.rank || "Sem rank")
+          );
+        });
+      };
+
+      container = new ContainerBuilder().setAccentColor(PRIMARY);
       addText(
         container,
-        "## INVI SIX PRO\n" +
-        "-# MATCH REPORT  /  TEMPORADA 01\n\n" +
-        "### PARTIDA FINALIZADA\n" +
-        "**Mapa:** " + session.selectedMap +
-        "  ·  **Partida:** #482731\n" +
-        "**Vencedor:** Time " + session.winner
+        "-# INVI SIX PRO  /  MATCH REPORT\n" +
+        "## Vitória do Time " + session.winner + "\n" +
+        "-# " + session.selectedMap + "  ·  Partida #482731"
       );
       separator(container);
-      addText(
-        container,
-        "### 🟢 VENCEDORES  /  +5 PTS\n" +
-        "\`\`\`text\n" + winners + "\n\`\`\`"
-      );
+      addRoster(session.winner, "🟢 TIME " + session.winner + "  /  VENCEDORES", "+5");
       separator(container);
-      addText(
-        container,
-        "### 🔴 DERROTADOS  /  −3 PTS\n" +
-        "\`\`\`text\n" + losers + "\n\`\`\`"
-      );
+      addRoster(loser, "🔴 TIME " + loser + "  /  DERROTADOS", "−3");
       separator(container);
-      addText(
-        container,
-        "-# RESULTADO CONFIRMADO  ·  AMBIENTE DE TESTES  ·  DADOS FICTÍCIOS"
-      );
+      addText(container, "-# RESULTADO CONFIRMADO  ·  PRÉVIA COM DADOS FICTÍCIOS");
       break;
     }
 
