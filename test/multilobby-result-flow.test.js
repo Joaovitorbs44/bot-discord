@@ -44,7 +44,7 @@ test("Discord captain confirmation, dispute, staff decision and duplicate clicks
   const publicMessages=[];
   const staffMessages=[];
   const channel={send:async payload=>{publicMessages.push(payload);return payload;}};
-  const staffChannel={send:async payload=>{staffMessages.push(payload);return payload;}};
+  const staffChannel={isTextBased:()=>true,send:async payload=>{staffMessages.push(payload);return payload;}};
   const client={channels:{fetch:async id=>id==="staff-channel"?staffChannel:null}};
   async function press(customId,userId,staff=false){
    const actions=[];
