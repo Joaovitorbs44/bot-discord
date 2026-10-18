@@ -23,6 +23,8 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - name: Synchronize dependency lockfile in CI
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - run: npm ci
       - run: npm test
       - name: Check JavaScript syntax
