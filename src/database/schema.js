@@ -364,9 +364,8 @@ function createIndexes() {
     CREATE INDEX IF NOT EXISTS idx_matchmaking_sessions_deadline
       ON matchmaking_sessions(deadline_at);
 
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_matchmaking_one_active_guild
-      ON matchmaking_sessions(guild_id)
-      WHERE status = 'active';
+    -- The legacy unique index is created only for unmigrated databases.
+    -- Migration state is checked below, outside this SQL batch.
 
     CREATE INDEX IF NOT EXISTS idx_session_players_discord
       ON matchmaking_session_players(discord_id);
@@ -398,6 +397,13 @@ function createIndexes() {
     CREATE INDEX IF NOT EXISTS idx_points_history_staff
       ON points_history(staff_discord_id);
   `);
+  // Never recreate the legacy unique index after the explicit multi-lobby
+  // migration. Fresh installations retain legacy behavior until migrated.
+  const migrated = db.prepare("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_matchmaking_active_guild_stage'").get();
+  if (!migrated) {
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_matchmaking_one_active_guild
+      ON matchmaking_sessions(guild_id) WHERE status='active'`);
+  }
 }
 
 module.exports = initializeDatabase;
