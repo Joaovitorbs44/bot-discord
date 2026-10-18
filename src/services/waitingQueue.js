@@ -20,7 +20,7 @@ function playerBusy(guildId, discordId) {
     SELECT 1 FROM matchmaking_session_players sp
     JOIN matchmaking_sessions s ON s.id = sp.session_id
     WHERE s.guild_id = ? AND s.status = 'active'
-      AND s.stage <> 'queue' AND sp.discord_id = ?
+      AND sp.discord_id = ?
     LIMIT 1
   `).get(guildId, discordId)) ||
     Boolean(db.prepare(`
@@ -113,6 +113,10 @@ function reserveIntoSession(guildId, channelId, count = 10) {
     `).all(guildId, count);
     if (rows.length !== count) return null;
     if (rows.some(row => playerBusy(guildId, row.discord_id))) return null;
+    // Fail closed until the legacy unique-active-session index has been
+    // migrated explicitly. Never remove that index in this service.
+    const legacyIndex = db.prepare("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_matchmaking_one_active_guild'").get();
+    if (legacyIndex) throw new Error("MULTILOBBY_SCHEMA_NOT_MIGRATED");
 
     const result = db.prepare(`
       INSERT INTO matchmaking_sessions (guild_id,channel_id,stage,status,state_json)
