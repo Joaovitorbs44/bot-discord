@@ -4,18 +4,15 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const CHANNEL_ID = "1557714957007593472";
 let running = false;
 const command = new SlashCommandBuilder()
   .setName("homologacao")
   .setDescription("Executa testes simulados isolados, sem alterar a fila ou o ranking.")
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .setDMPermission(false);
 
 function authorized(interaction, config) {
   return interaction.inGuild() &&
     interaction.guildId === config.discord.guildId &&
-    interaction.channelId === CHANNEL_ID &&
     (interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ||
       interaction.member?.roles?.cache?.has(config.discord.staffRoleId));
 }
@@ -52,7 +49,7 @@ async function runSuite() {
 async function execute(interaction) {
   const config = require("../config/config");
   if (!authorized(interaction, config)) {
-    return interaction.reply({ content: "Comando exclusivo da staff no canal painel-staff autorizado.", flags: MessageFlags.Ephemeral });
+    return interaction.reply({ content: "Comando exclusivo da staff no servidor autorizado.", flags: MessageFlags.Ephemeral });
   }
   if (running) return interaction.reply({ content: "Já existe uma homologação em andamento.", flags: MessageFlags.Ephemeral });
   running = true;

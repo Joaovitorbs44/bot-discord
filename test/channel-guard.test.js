@@ -56,7 +56,9 @@ test("preview command and components use painel-staff independently of requests 
     historico: "results", partida: "results", pontos: "moderation", solicitacoes: "requests"
   })) {
     assert.equal(await enforceChannel(command(name, target, true)), false, name);
-    assert.equal(await enforceChannel(command(name, "general", true)), true, name);
+    assert.equal(await enforceChannel(command(name, "general", false)), true, name);
+    assert.equal(await enforceChannel({ ...command(name, "general", true), guildId: "other" }), true, name);
+    assert.equal(await enforceChannel(command(name, "general", true)), false, name);
     assert.equal(await enforceChannel(command(name, "1557714957007593472", true)), false, name);
     assert.equal(await enforceChannel(command(name, "1557714957007593472", false)), true, name);
   }
@@ -64,7 +66,7 @@ test("preview command and components use painel-staff independently of requests 
     const component = { ...command("", "queue", true), customId, isChatInputCommand: () => false, isButton: () => true };
     assert.equal(await enforceChannel(component), false);
     assert.equal(await enforceChannel({ ...component, channelId: "1557714957007593472" }), false);
-    assert.equal(await enforceChannel({ ...component, channelId: "general" }), true);
+    assert.equal(await enforceChannel({ ...component, channelId: "general" }), false);
   }
 
 });

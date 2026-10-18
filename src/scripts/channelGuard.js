@@ -23,7 +23,7 @@ function isStaff(interaction) {
 }
 function panelAccess(interaction) {
   return interaction.inGuild?.() && interaction.guildId === config.discord.guildId &&
-    interaction.channelId === STAFF_PANEL_ID && isStaff(interaction);
+    isStaff(interaction);
 }
 async function moderationChannel(interaction) {
   if (process.env.RESULT_MODERATION_CHANNEL_ID) return process.env.RESULT_MODERATION_CHANNEL_ID;
@@ -50,12 +50,13 @@ async function expectedChannel(interaction) {
   return null;
 }
 async function enforceChannel(interaction) {
-  // Staff can invoke every slash command from their panel; match controls
+  // Staff can invoke every slash command in the configured guild; match controls
   // remain bound to their real stage channel and session.
   const panel = panelAccess(interaction);
   if (panel && (interaction.isChatInputCommand() ||
     ["clear_queue_confirm", "clear_queue_cancel"].includes(interaction.customId) ||
-    interaction.customId?.startsWith("ranking_page:"))) return false;
+    ["ranking_page:", "preview_action:", "preview_choice:", "staff_panel:"].some(prefix => interaction.customId?.startsWith(prefix)) ||
+    interaction.customId === "preview_select")) return false;
   const channelId = await expectedChannel(interaction);
   if (!channelId || interaction.channelId === channelId) return false;
   await interaction.reply({ content: `Este comando ou ação só pode ser usado em <#${channelId}>.`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });

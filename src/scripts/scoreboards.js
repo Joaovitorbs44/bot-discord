@@ -10,7 +10,6 @@ const store = require("../services/scoreboardStore");
 const ocr = require("../services/scoreboardOcr");
 const { safe } = require("../services/competitiveStats");
 const RESULTS = "1555941357061804145";
-const STAFF = "1557714957007593472";
 let processing = false;
 const commands = [
   new SlashCommandBuilder().setName("placar").setDescription("Envia o placar para revisão do K/D pela staff.").setDMPermission(false)
@@ -21,7 +20,7 @@ const commands = [
     .addStringOption(o=>o.setName("codigo").setDescription("Código para abrir o placar; vazio lista os últimos 10."))
 ];
 function isStaff(i) { return Boolean(i.memberPermissions?.has(PermissionFlagsBits.Administrator) || i.member?.roles?.cache?.has(config.discord.staffRoleId) || (Array.isArray(i.member?.roles)&&i.member.roles.includes(config.discord.staffRoleId))); }
-function staffAccess(i) { return i.inGuild() && i.guildId===config.discord.guildId && i.channelId===STAFF && isStaff(i); }
+function staffAccess(i) { return i.inGuild() && i.guildId===config.discord.guildId && isStaff(i); }
 function findMatch(code) { return store.match(code) || store.match("#"+String(code).replace(/^#/,"")); }
 const fail = (i,content) => i.reply({content,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});
 function archiveRoot() { return path.join(path.dirname(db.name), "scoreboards"); }
@@ -142,7 +141,7 @@ async function removeSource(i,report) {
   }catch(error){if(error.code===10008)return true;console.warn("[K/D] Não foi possível apagar envio:",error.message);return false;}
 }
 async function history(i) {
-  if(!staffAccess(i))return fail(i,"Consulta exclusiva da staff no painel-staff.");
+  if(!staffAccess(i))return fail(i,"Consulta exclusiva da staff.");
   const code=i.options.getString("codigo");
   if(!code) {
     const reports=store.recent();
@@ -156,7 +155,7 @@ async function history(i) {
 }
 async function handle(i) {
   if(!i.customId?.startsWith("kd:"))return false;
-  if(!staffAccess(i)){await fail(i,"Revisão exclusiva da staff no painel-staff.");return true;}
+  if(!staffAccess(i)){await fail(i,"Revisão exclusiva da staff.");return true;}
   const [,action,rawId,playerId]=i.customId.split(":");
   if(!/^\d+$/.test(rawId)){await fail(i,"Placar inválido.");return true;}
   const report=store.get(Number(rawId));

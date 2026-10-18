@@ -93,11 +93,11 @@ test("staff approval archives evidence, deletes source only after commit and kee
    client:{channels:{fetch:async()=>({messages:{fetch:async()=>({delete:async()=>events.push("delete")})}})}},
    deferUpdate:async()=>events.push("ack"),editReply:async payload=>{response=payload;},reply:async payload=>{response=payload;}
   };
-  await handlers.handle({...interaction,channelId:"public"});
+  await handlers.handle({...interaction,guildId:"other"});
   assert.deepEqual(events,[]);assert.match(response.content,/exclusiva/);
   await handlers.handle({...interaction,member:{roles:{cache:{has:()=>false}}}});
   assert.deepEqual(events,[]);
-  await handlers.handle(interaction);
+  await handlers.handle({...interaction,channelId:"public"});
   assert.deepEqual(events,["commit","ack","delete"]);
   assert.deepEqual(response.attachments,[]);assert.deepEqual(response.components,[]);
   assert.equal(fs.readFileSync(archive,"utf8"),"test evidence");
@@ -114,7 +114,7 @@ test("staff approval archives evidence, deletes source only after commit and kee
   assert.match(panel.footer.text,/acumulado da temporada/);
   fs.rmSync(archive);
   report.status="pending";events.length=0;
-  await handlers.handle(interaction);
+  await handlers.handle({...interaction,channelId:"public"});
   assert.deepEqual(events,[]);
  }finally{delete require.cache[filename];fs.rmSync(root,{recursive:true,force:true});}
 });

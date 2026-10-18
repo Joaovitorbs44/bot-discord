@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { authorized, command } = require("../src/scripts/homologation");
 
-test("homologation requires the authorized guild, channel and staff role", () => {
+test("homologation requires the authorized guild and staff role in any channel", () => {
   const config = { discord: { guildId: "guild", staffRoleId: "staff" } };
   const interaction = {
     inGuild: () => true, guildId: "guild", channelId: "1557714957007593472",
@@ -10,7 +10,7 @@ test("homologation requires the authorized guild, channel and staff role", () =>
     member: { roles: { cache: { has: role => role === "staff" } } }
   };
   assert.equal(authorized(interaction, config), true);
-  assert.equal(authorized({ ...interaction, channelId: "public" }, config), false);
+  assert.equal(authorized({ ...interaction, channelId: "public" }, config), true);
   assert.equal(authorized({ ...interaction, guildId: "other" }, config), false);
   assert.equal(authorized({ ...interaction, inGuild: () => false }, config), false);
   assert.equal(Boolean(authorized({ ...interaction, member: null }, config)), false);
