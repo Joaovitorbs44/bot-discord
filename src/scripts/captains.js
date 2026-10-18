@@ -222,7 +222,7 @@ function createVotePanel(finished = false) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "## INVISIXTATIONAL\n" +
+        "## INVI SIX PRO\n" +
         "### VOTAÇÃO DE CAPITÃES · 5V5"
       )
     )
