@@ -13,6 +13,9 @@ on:
       - '.github/workflows/multilobby-tests.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -26,6 +29,17 @@ jobs:
       - name: Synchronize dependency lockfile in CI
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - run: npm ci
+      - name: Commit validated lockfile to feature branch
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/invi-six-pro-v2-premium-glass'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- package-lock.json; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "chore(deps): synchronize npm lockfile"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.event.pull_request.head.repo.full_name }}.git" HEAD:feature/invi-six-pro-v2-premium-glass
       - run: npm test
       - name: Check JavaScript syntax
         run: |
