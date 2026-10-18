@@ -42,7 +42,7 @@ test("recovers two unpublished matches and preserves result buttons without dupl
    id:"results",isTextBased:()=>true,
    messages:{fetch:async arg=>typeof arg==="string"
     ? (messages.has(arg)?messages.get(arg):Promise.reject(Object.assign(new Error("Unknown Message"),{code:10008})))
-    : new Map(messages)},
+    : {find:predicate=>[...messages.values()].find(predicate)}},
    send:async payload=>{
     const id=`msg-${sent.length+1}`;
     const message={id,components:payload.components,author:{id:"bot"}};
@@ -57,9 +57,9 @@ test("recovers two unpublished matches and preserves result buttons without dupl
   assert.equal(messages.size,2);
   for(let i=1;i<=2;i++){
    const state=JSON.parse(db.prepare("SELECT state_json FROM matchmaking_sessions WHERE id=?").get(i).state_json);
-   assert.equal(state.resultMessageId,`msg-${i}`);
+   assert.equal(state.resultMessageId,`msg-${3-i}`);
    assert.equal(state.resultChannelId,"results");
-   const button=sent[i-1].components[1].components[0].toJSON();
+   const button=sent[2-i].components[1].components[0].toJSON();
    assert.equal(button.custom_id,`result_report:#12345${i}`);
   }
   await restoreMatchPublications(client);
