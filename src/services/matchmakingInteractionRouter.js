@@ -55,6 +55,15 @@ async function handleSessionComponent(interaction) {
     await reject(interaction,"Este lobby não está ativo ou você não participa dele.");
     return true;
   }
+  const channelId = parsed.stage === "ready_check"
+    ? (authorized.state.readyCheckPanel?.channelId || authorized.session.channel_id)
+    : parsed.stage === "captain_vote"
+      ? (authorized.state.captainVotePanel?.channelId || config.discord.draftChannelId)
+      : authorized.session.channel_id;
+  if (!channelId || interaction.channelId !== channelId) {
+    await reject(interaction,"Este controle pertence a outro canal do lobby.");
+    return true;
+  }
   if (parsed.stage === "ready_check" && interaction.isButton()) {
     await handleReady(interaction,parsed);
     return true;
