@@ -86,19 +86,6 @@ function getJoinedTimes() {
   }
 }
 
-function createMatchFoundMessage(players) {
-  const mentions = players
-    .map(player => `<@${player.discordId}>`)
-    .join(" ");
-
-  return (
-    "🔔 **PARTIDA ENCONTRADA!**\n\n" +
-    `${mentions}\n\n` +
-    "Os **10 jogadores** foram encontrados.\n" +
-    "Confirmem presença no **Ready Check** abaixo."
-  );
-}
-
 async function handleQueue(interaction) {
   if (
     interaction.customId !== "queue_join" &&
@@ -260,15 +247,6 @@ async function joinQueue(interaction, player) {
   const players = queueState.getPlayers();
 
   try {
-    // O aviso é temporário. Sua exclusão será
-    // integrada depois ao ciclo de vida do Ready Check.
-    await interaction.followUp({
-      content: createMatchFoundMessage(players),
-      allowedMentions: {
-        users: players.map(item => item.discordId)
-      }
-    });
-
     await startReadyCheck(interaction, players);
   } catch (error) {
     console.error(
@@ -431,7 +409,7 @@ function createQueuePanel() {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         locked
-          ? "-# Aguarde a formação da partida."
+          ? `-# Partida encontrada. Acompanhem as etapas em <#${config.discord.draftChannelId}>.`
           : "-# A partida começa quando a fila estiver completa."
       )
     );
@@ -678,3 +656,4 @@ module.exports = {
   removePlayersFromQueue,
   createMatchFoundMessage
 };
+

@@ -1,3 +1,4 @@
+const { cleanup } = require("../services/panelLifecycle");
 
 const {
   ContainerBuilder,
@@ -236,7 +237,9 @@ async function createMapVetoPanel() {
     container,
     "## INVI SIX PRO\n" +
     "### PICK & BAN · MELHOR DE 1\n" +
-    "-# Rainbow Six Siege · Matchmaking competitivo"
+    "-# Rainbow Six Siege · Matchmaking competitivo\n\n" +
+    "**Draft concluído. Jogadores desta partida:**\n" +
+    [...teamA, ...teamB].map(player => `<@${player.discordId}>`).join(" ")
   );
 
   addSeparator(container);
@@ -380,6 +383,7 @@ async function updateVetoMessage(finished = false) {
         attachments: []
       });
 
+      await cleanup(vetoClient, parseState(getSession()?.state_json), ["readyCheck", "captainVote", "draft"]);
       return vetoMessage;
     } catch (error) {
       console.warn(
@@ -392,9 +396,10 @@ async function updateVetoMessage(finished = false) {
 
   const channel = await getVetoChannel();
 
-  vetoMessage = await channel.send(payload);
+  vetoMessage = await channel.send({ ...payload, allowedMentions: { parse: [], users: [...teamA, ...teamB].map(player => player.discordId) } });
 
   saveMapVetoState();
+  await cleanup(vetoClient, parseState(getSession()?.state_json), ["readyCheck", "captainVote", "draft"]);
 
   return vetoMessage;
 }
@@ -992,3 +997,4 @@ module.exports = {
   getSelectedMap,
   getVetoData
 };
+

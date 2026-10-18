@@ -1,3 +1,4 @@
+const { removeMessage } = require("../services/panelLifecycle");
 
 const {
   ContainerBuilder,
@@ -699,6 +700,7 @@ async function handleDraftPick(interaction) {
 
   if (currentRound >= draftRounds.length) {
     await finishDraft();
+    await interaction.followUp({ content: `Draft concluído. Continuem em <#${config.discord.mapVetoChannelId}>.`, flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -886,24 +888,7 @@ async function finishDraft() {
       selectedCaptainB
     );
 
-    // O painel de draft é temporário.
-    // Só exclui depois que startMapVeto
-    // retorna com sucesso.
-    if (oldMessage) {
-      try {
-        if (
-          oldMessage.author?.id ===
-          draftClient.user.id
-        ) {
-          await oldMessage.delete();
-        }
-      } catch (error) {
-        console.warn(
-          "[DRAFT] Não foi possível excluir painel:",
-          error.message
-        );
-      }
-    }
+    await removeMessage(draftClient, oldMessage);
 
     resetDraft();
 
@@ -1063,3 +1048,4 @@ module.exports = {
   isDraftActive,
   getTeams
 };
+

@@ -9,7 +9,7 @@ test("preview command and components use painel-staff independently of requests 
   try {
     Module._load = function(request, parent) {
       if (parent?.filename === filename && request === "../config/config") {
-        return { discord: { staffChannelId: "requests" } };
+        return { discord: { staffChannelId: "requests", draftChannelId: "pick" } };
       }
       return original.apply(this, arguments);
     };
@@ -31,6 +31,13 @@ test("preview command and components use painel-staff independently of requests 
       assert.equal(replies.length, denied ? 1 : 0);
       if (denied) assert.match(replies[0].content, /1557714957007593472/);
     }
+  }
+  for (const customId of ["ready_confirm", "captain_vote"]) {
+    const replies = [];
+    const interaction = { customId, channelId: "pick", isChatInputCommand: () => false, isButton: () => true, reply: async payload => replies.push(payload) };
+    assert.equal(await enforceChannel(interaction), false);
+    assert.equal(await enforceChannel({ ...interaction, channelId: "queue" }), true);
+    assert.match(replies[0].content, /<#pick>/);
   }
   assert.equal(await enforceChannel({ commandName: "solicitacoes", channelId: "requests", isChatInputCommand: () => true }), false);
 });

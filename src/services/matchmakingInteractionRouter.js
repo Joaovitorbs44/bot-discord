@@ -65,7 +65,7 @@ async function handleSessionComponent(interaction) {
     return true;
   }
   const channelId = parsed.stage === "ready_check"
-    ? (authorized.state.readyCheckPanel?.channelId || authorized.session.channel_id)
+    ? (authorized.state.readyCheckPanel?.channelId || config.discord.draftChannelId)
     : parsed.stage === "captain_vote"
       ? (authorized.state.captainVotePanel?.channelId || config.discord.draftChannelId)
       : parsed.stage === "draft"
@@ -115,7 +115,7 @@ async function handleSessionComponent(interaction) {
       await reject(interaction,"Escolha inválida ou não é sua vez neste lobby.");
       return true;
     }
-    await reject(interaction,result.finished ? "Draft concluído. Preparando veto de mapas." : "Jogador selecionado.");
+    await reject(interaction,result.finished ? `Draft concluído. Continuem em <#${config.discord.mapVetoChannelId}>.` : "Jogador selecionado.");
     try {
       if (result.finished) await mapVetoPanels.publish(interaction.client,parsed.sessionId);
       else await draftPanels.publish(interaction.client,parsed.sessionId);
@@ -158,3 +158,4 @@ async function handleSessionComponent(interaction) {
 }
 
 module.exports = {handleSessionComponent};
+

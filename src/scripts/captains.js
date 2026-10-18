@@ -1,3 +1,4 @@
+const { removeMessage } = require("../services/panelLifecycle");
 
 const {
   ContainerBuilder,
@@ -732,6 +733,7 @@ async function finishCaptainVote(interaction = null) {
     );
   }
 
+  const completedVoteMessage = voteMessage;
   const context = {
     client: voteClient,
     followUp: async payload => {
@@ -747,6 +749,8 @@ async function finishCaptainVote(interaction = null) {
       captainA,
       captainB
     );
+
+    await removeMessage(voteClient, completedVoteMessage);
 
     console.log(
       `[CAPTAINS] Capitães definidos: ` +
@@ -930,3 +934,4 @@ module.exports = {
   getCaptains,
   getCaptainPlayers
 };
+

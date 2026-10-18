@@ -8,7 +8,7 @@ const config = require("../config/config");
 function render(snapshot) {
   if (!snapshot) throw new Error("READY_SESSION_NOT_FOUND");
   const lines = [
-    `## Ready Check · Lobby #${snapshot.sessionId}`,
+    `## 🔔 Partida encontrada · Ready Check · Lobby #${snapshot.sessionId}`,
     `**${snapshot.confirmed.length}/${snapshot.total} confirmados**`,
     snapshot.deadline ? `Prazo: <t:${Math.ceil(snapshot.deadline/1000)}:R>` : "Prazo não iniciado",
     ...snapshot.confirmed.map(id => `✅ <@${id}>`),
@@ -28,7 +28,7 @@ function render(snapshot) {
 }
 
 async function channelFor(client, session, state) {
-  const channelId = state.readyCheckPanel?.channelId || session.channel_id || config.discord.queueChannelId;
+  const channelId = state.readyCheckPanel?.channelId || config.discord.draftChannelId;
   const channel = await client.channels.fetch(channelId);
   if (!channel?.isTextBased() || !channel.send) throw new Error("READY_CHANNEL_UNAVAILABLE");
   return channel;
@@ -48,7 +48,7 @@ async function publish(client, sessionId) {
   if (message) {
     await message.edit(data);
   } else {
-    message = await channel.send(data);
+    message = await channel.send({ ...data, allowedMentions: { parse: [], users: [...ready.snapshot(sessionId).confirmed, ...ready.snapshot(sessionId).waiting] } });
     sessions.updateState(sessionId,"ready_check",{
       readyCheckPanel:{channelId:channel.id,messageId:message.id}
     });
@@ -104,3 +104,4 @@ async function recover(client,guildId) {
 }
 
 module.exports = {render,publish,start,schedule,recover};
+

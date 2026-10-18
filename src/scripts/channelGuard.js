@@ -18,7 +18,7 @@ const channelByCommand={
 };
 const channelByComponent={
   queue_join:"queueChannelId",queue_leave:"queueChannelId",
-  ready_confirm:"queueChannelId",captain_vote:"queueChannelId",
+  ready_confirm:"draftChannelId",captain_vote:"draftChannelId",
   draft_pick:"draftChannelId",map_veto:"mapVetoChannelId",
   side_attack:"mapVetoChannelId",side_defense:"mapVetoChannelId"
 };

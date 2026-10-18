@@ -154,7 +154,7 @@ function panel(status = "active") {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         "## INVI SIX PRO\n" +
-        "### READY CHECK · MATCHMAKING 5V5"
+        "### 🔔 PARTIDA ENCONTRADA · READY CHECK 5V5"
       )
     )
     .addSeparatorComponents(
@@ -238,7 +238,7 @@ function saveState() {
     messageId: message?.id || null,
     channelId:
       message?.channelId ||
-      config.discord.queueChannelId
+      config.discord.draftChannelId
   };
 
   const result = db.prepare(`
@@ -437,7 +437,7 @@ async function startReadyCheck(
   }
 
   const channel = await interaction.client.channels.fetch(
-    config.discord.queueChannelId
+    config.discord.draftChannelId
   );
 
   if (
@@ -501,9 +501,10 @@ async function startReadyCheck(
       }
     })();
 
-    message = await channel.send(
-      panel()
-    );
+    message = await channel.send({
+      ...panel(),
+      allowedMentions: { users: players.map(player => player.discordId), parse: [] }
+    });
 
     saveState();
     scheduleTimeout();
@@ -921,7 +922,7 @@ async function restoreReadyCheck(restoredClient) {
 
   const channel = await client.channels.fetch(
     saved.channelId ||
-    config.discord.queueChannelId
+    config.discord.draftChannelId
   );
 
   if (
@@ -997,3 +998,4 @@ module.exports = {
   getReadyCheckPlayers,
   getReadyPlayers
 };
+

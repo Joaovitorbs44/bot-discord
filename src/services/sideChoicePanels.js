@@ -1,3 +1,4 @@
+const { cleanup } = require("./panelLifecycle");
 const {ContainerBuilder,TextDisplayBuilder,ActionRowBuilder,ButtonBuilder,ButtonStyle,MessageFlags}=require("discord.js");
 const sessions=require("./matchmakingSessions");
 const config=require("../config/config");
@@ -31,6 +32,7 @@ async function publish(client,id){
   message=await channel.send(payload);
   sessions.updateState(id,"side_choice",{sideChoicePanel:{channelId:channel.id,messageId:message.id}});
  }
+  await cleanup(client, state, ["readyCheckPanel", "captainVotePanel", "draftPanel", "mapVetoPanel"]);
  return message;
 }
 async function recover(client,guildId){
@@ -42,3 +44,4 @@ async function recover(client,guildId){
  return ids;
 }
 module.exports={render,publish,recover};
+

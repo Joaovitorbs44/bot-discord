@@ -1,3 +1,4 @@
+const { cleanup } = require("../services/panelLifecycle");
 
 const {
   ContainerBuilder,
@@ -413,6 +414,7 @@ async function publishMatch(client, match, data, season, sessionId = null) {
     `).run(JSON.stringify(state), Date.now(), session.id, match.matchId);
   }
 
+  await cleanup(client, state, ["readyCheckPanel", "captainVotePanel", "draftPanel", "mapVetoPanel", "sideChoicePanel"]);
   return channel;
 }
 
@@ -729,3 +731,4 @@ module.exports = {
   restoreMatchPublications,
   validateMatchData
 };
+

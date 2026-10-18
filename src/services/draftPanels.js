@@ -1,3 +1,4 @@
+const { cleanup } = require("./panelLifecycle");
 const {ContainerBuilder,TextDisplayBuilder,ActionRowBuilder,StringSelectMenuBuilder,MessageFlags} = require("discord.js");
 const sessions = require("./matchmakingSessions");
 const drafts = require("./draftSessions");
@@ -36,6 +37,7 @@ async function publish(client,sessionId) {
     message = await channel.send(payload);
     sessions.updateState(sessionId,"draft",{draftPanel:{channelId:channel.id,messageId:message.id}});
   }
+  await cleanup(client, state, ["readyCheckPanel", "captainVotePanel"]);
   return message;
 }
 async function recover(client,guildId) {
@@ -47,3 +49,4 @@ async function recover(client,guildId) {
   return ids;
 }
 module.exports={render,publish,recover};
+
