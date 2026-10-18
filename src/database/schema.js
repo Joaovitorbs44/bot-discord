@@ -404,6 +404,8 @@ function createIndexes() {
     db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_matchmaking_one_active_guild
       ON matchmaking_sessions(guild_id) WHERE status='active'`);
   }
+  require("../services/scoreboardStore").initialize();
 }
 
 module.exports = initializeDatabase;
+

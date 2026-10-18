@@ -9,11 +9,12 @@ function buildRanking(page = 0) {
   const finished = season ? db.prepare("SELECT COUNT(*) AS total FROM matches WHERE season_id=? AND status='finished'").get(season.id).total : 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const current = Math.max(0, Math.min(Number.isSafeInteger(page) ? page : 0, pages - 1));
-  const players = season ? db.prepare("SELECT p.r6_nickname,p.r6_rank,sp.points,sp.wins,sp.losses,sp.matches_played FROM season_players sp JOIN players p ON p.id=sp.player_id WHERE sp.season_id=? AND p.is_banned=0 ORDER BY sp.points DESC,sp.wins DESC,sp.matches_played ASC,p.id ASC LIMIT ? OFFSET ?").all(season.id, PAGE_SIZE, current * PAGE_SIZE) : [];
+  const players = season ? db.prepare("SELECT p.discord_id,p.r6_nickname,p.r6_rank,sp.points,sp.wins,sp.losses,sp.matches_played FROM season_players sp JOIN players p ON p.id=sp.player_id WHERE sp.season_id=? AND p.is_banned=0 ORDER BY sp.points DESC,sp.wins DESC,sp.matches_played ASC,p.id ASC LIMIT ? OFFSET ?").all(season.id, PAGE_SIZE, current * PAGE_SIZE) : [];
   const rows = players.map((p,i) => {
+    const kd = require("../services/scoreboardStore").totals(p.discord_id,season.id);
     const pos = current * PAGE_SIZE + i + 1;
     const marker = pos === 1 ? "🥇" : pos === 2 ? "🥈" : pos === 3 ? "🥉" : "**" + pos + ".**";
-    return marker + " **" + stats.safe(p.r6_nickname) + "** · **" + p.points + " pts**\n-# " + p.wins + "V / " + p.losses + "D · " + stats.winRate(p.wins,p.matches_played) + "% WR · " + stats.safe(p.r6_rank);
+    return marker + " **" + stats.safe(p.r6_nickname) + "** · **" + p.points + " pts**\n-# " + p.wins + "V / " + p.losses + "D · " + stats.winRate(p.wins,p.matches_played) + "% WR · " + stats.safe(p.r6_rank) + "\n-# " + kd.kills + " K / " + kd.deaths + " D · **" + kd.kd + " K/D** · " + kd.matches + " placares aprovados";
   }).join("\n\n") || "Nenhum jogador inscrito nesta temporada.";
   const panel = new ContainerBuilder().setAccentColor(0xFF3D2C)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent("## INVI SIX PRO\n-# RANKING COMPETITIVO / " + stats.safe(season?.name || "SEM TEMPORADA ATIVA")))
@@ -35,3 +36,4 @@ async function handleRankingPage(interaction) {
 }
 module.exports = handleRanking;
 module.exports.handleRankingPage = handleRankingPage;
+

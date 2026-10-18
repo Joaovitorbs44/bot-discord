@@ -2,7 +2,7 @@ const { MessageFlags, PermissionFlagsBits } = require("discord.js");
 const config = require("../config/config");
 const STAFF_PANEL_ID = "1557714957007593472";
 const channelByCommand = {
-  ranking: "rankingChannelId", perfil: "rankingChannelId",
+  placar: "resultsChannelId", ranking: "rankingChannelId", perfil: "rankingChannelId",
   temporada: "rankingChannelId", temporadas: "rankingChannelId",
   historico: "resultsChannelId", partida: "resultsChannelId",
   solicitacoes: "staffChannelId", "remover-acesso": "staffChannelId",
@@ -37,7 +37,7 @@ async function moderationChannel(interaction) {
 }
 async function expectedChannel(interaction) {
   if (interaction.isChatInputCommand()) {
-    if (["preview", "homologacao", "painel-staff"].includes(interaction.commandName)) return STAFF_PANEL_ID;
+    if (["preview", "homologacao", "painel-staff", "partidas"].includes(interaction.commandName)) return STAFF_PANEL_ID;
     if (interaction.commandName === "pontos") return moderationChannel(interaction);
     return config.discord[channelByCommand[interaction.commandName]];
   }

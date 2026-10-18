@@ -13,7 +13,10 @@ const {
 
 const { command: homologationCommand } = require("./homologation");
 
+const { commands: scoreboardCommands } = require("./scoreboards");
+
 const commands = [
+  ...scoreboardCommands,
   homologationCommand,
   new SlashCommandBuilder()
     .setName("perfil")

@@ -1,3 +1,4 @@
+const scoreboards = require("../scripts/scoreboards");
 const { execute: executeHomologation } = require("../scripts/homologation");
 
 const {
@@ -354,6 +355,7 @@ client.on(
   Events.InteractionCreate,
   async interaction => {
     try {
+      if (await scoreboards.handle(interaction)) return;
       if (await handleSessionComponent(interaction)) return;
       if (await enforceChannel(interaction)) return;
       if (interaction.isButton() && interaction.customId.startsWith("ranking_page:")) return handleRankingPage(interaction);
@@ -705,6 +707,10 @@ client.on(
         interaction.isChatInputCommand()
       ) {
         switch (interaction.commandName) {
+          case "placar":
+            return scoreboards.sendScoreboard(interaction);
+          case "partidas":
+            return scoreboards.history(interaction);
           case "homologacao":
             return executeHomologation(interaction);
           case "preview":
