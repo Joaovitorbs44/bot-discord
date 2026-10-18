@@ -95,12 +95,35 @@ async function sendScoreboard(i) {
 function view(report) {
   const players=store.roster(report.match_id),rows=JSON.parse(report.rows_json);
   const match=store.match(report.match_code);
-  const embed=new EmbedBuilder().setColor(0xFF3D2C).setTitle(`Placar ${report.match_code} · ${report.map}`)
-    .setDescription(`**Status:** ${report.status}\nConfira os 10 jogadores e a imagem antes de aprovar.\n${report.ocr_note||"Dados sugeridos pelo OCR; exigem revisão."}`)
-    .addFields(players.map(p=>{
-      const row=rows.find(r=>r.discordId===p.discord_id);
-      return {name:`${matchTeam(db,match,p.team,true)} · ${p.r6_nickname}`.slice(0,100),value:row?.kills===null||row?.deaths===null||!row?"⚠️ Preenchimento necessário":`${row.kills} kills / ${row.deaths} mortes · K/D ${row.deaths?(row.kills/row.deaths).toFixed(2):(row.kills?"∞":"0.00")}`,inline:true};
-    })).setImage("attachment://placar.png");
+  const approved=report.status==="approved";
+  const status={approved:"✅ K/D aprovado",pending:"⏳ Aguardando revisão",rejected:"❌ Placar rejeitado"}[report.status]||report.status;
+  const winner=match?.winner_team ? matchTeam(db,match,match.winner_team) : "Não definido";
+  const description=[
+    `**${status}**`,
+    `**Vencedor da partida:** ${winner}`,
+    approved ? "Estatísticas registradas. Nenhuma ação pendente." : report.status==="pending"
+      ? "Confira a imagem e os 10 jogadores. Use o seletor para corrigir os campos antes de aprovar."
+      : "Este envio não entra nas estatísticas.",
+    report.status==="pending" ? report.ocr_note : null
+  ].filter(Boolean).join("\n");
+  const teamFields=["A","B"].map(team=>{
+    const captainId=team==="A"?match?.captain_a_discord_id:match?.captain_b_discord_id;
+    const roster=players.filter(player=>player.team===team)
+      .sort((a,b)=>Number(b.discord_id===captainId)-Number(a.discord_id===captainId));
+    const value=roster.map(player=>{
+      const row=rows.find(item=>item.discordId===player.discord_id);
+      const name=`${player.discord_id===captainId?"👑 ":""}**${safe(player.r6_nickname,40)}**`;
+      if(!row||row.kills===null||row.deaths===null)return name+"\n⚠️ Kills e mortes pendentes";
+      const kd=row.deaths?(row.kills/row.deaths).toFixed(2).replace(".",","):(row.kills?"∞":"0,00");
+      return name+`\n${row.kills} kills · ${row.deaths} mortes · **${kd} K/D**`;
+    }).join("\n\n");
+    return {name:`${team==="A"?"🟠":"🔵"} ${matchTeam(db,match,team,true)}`,value:value||"Nenhum jogador registrado.",inline:false};
+  });
+  const embed=new EmbedBuilder().setColor(approved?0x278451:report.status==="rejected"?0x454650:0xFF3D2C)
+    .setTitle(`Partida ${report.match_code} · ${report.map}`)
+    .setDescription(description).addFields(teamFields)
+    .setFooter({text:"K/D desta partida. /perfil e /ranking mostram o acumulado da temporada."})
+    .setImage("attachment://placar.png");
   const components=[];
   if(report.status==="pending") {
     components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`kd:choose:${report.id}`).setPlaceholder("Corrigir kills e mortes de um jogador").addOptions(players.map(p=>({label:p.r6_nickname.slice(0,100),value:p.discord_id})))));
@@ -123,7 +146,7 @@ async function history(i) {
   const code=i.options.getString("codigo");
   if(!code) {
     const reports=store.recent();
-    return i.reply({content:reports.map(r=>`**${safe(r.match_code)}** · ${safe(r.map)} · ${r.status}`).join("\n")||"Nenhum placar enviado. Use /partidas codigo:... para abrir uma imagem arquivada.",flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});
+    return i.reply({content:reports.map(r=>`**${safe(r.match_code)}** · ${safe(r.map)} · ${{approved:"✅ Aprovado",pending:"⏳ Aguardando revisão",rejected:"❌ Rejeitado"}[r.status]||r.status}`).join("\n")||"Nenhum placar enviado. Use /partidas codigo:... para abrir uma imagem arquivada.",flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});
   }
   const match=findMatch(code),report=match&&store.forMatch(match.id);
   if(!report)return fail(i,"Esta partida ainda não possui um placar enviado.");

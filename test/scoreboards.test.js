@@ -104,6 +104,14 @@ test("staff approval archives evidence, deletes source only after commit and kee
   let flags;
   await handlers.history({...interaction,options:{getString:()=>"#1"},deferReply:async payload=>{flags=payload.flags;},editReply:async payload=>{response=payload;}});
   assert.equal(flags,64);assert.equal(response.files.length,1);
+  const panel=response.embeds[0].toJSON();
+  assert.equal(panel.fields.length,2);
+  assert.ok(panel.fields.every(field=>field.inline===false));
+  assert.match(panel.fields[0].value,/nick0/);
+  assert.match(panel.fields[1].value,/nick5/);
+  assert.match(panel.description,/K\/D aprovado/);
+  assert.doesNotMatch(panel.description,/Confira|exigem revisão|OCR/);
+  assert.match(panel.footer.text,/acumulado da temporada/);
   fs.rmSync(archive);
   report.status="pending";events.length=0;
   await handlers.handle(interaction);
