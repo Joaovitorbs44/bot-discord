@@ -12,8 +12,9 @@ db.exec(`
    updated_at INTEGER
  );
  CREATE TABLE matchmaking_session_players (
-   session_id INTEGER NOT NULL, discord_id TEXT NOT NULL,
-   PRIMARY KEY(session_id,discord_id)
+   id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER NOT NULL, discord_id TEXT NOT NULL,
+   ready_confirmed INTEGER NOT NULL DEFAULT 0, joined_at INTEGER NOT NULL DEFAULT 0,
+   UNIQUE(session_id,discord_id)
  );
  CREATE TABLE matchmaking_waiting_players (
    guild_id TEXT NOT NULL, discord_id TEXT NOT NULL, joined_at INTEGER NOT NULL,
@@ -30,6 +31,7 @@ Module._load = function(request, parent, isMain) {
 };
 const waiting = require("../src/services/waitingQueue");
 const sessions = require("../src/services/matchmakingSessions");
+const ready = require("../src/services/readyCheckSessions");
 Module._load = originalLoad;
 
 test("20 players form two isolated lobbies while waiting queue remains usable", () => {
@@ -43,6 +45,17 @@ test("20 players form two isolated lobbies while waiting queue remains usable", 
   assert.equal(waiting.enqueue("guild","p21"),true);
   assert.equal(waiting.enqueue("guild","p1"),false);
   assert.equal(sessions.getActiveSessions("guild").length,2);
+});
+test("ready confirmations remain isolated and idempotent", () => {
+  const [a,b] = sessions.getActiveSessions("guild");
+  assert.ok(ready.setDeadline(a.id,60));
+  assert.ok(ready.setDeadline(b.id,60));
+  assert.equal(ready.confirm(a.id,"p1","guild").ok,true);
+  assert.equal(ready.confirm(a.id,"p1","guild").reason,"already_confirmed");
+  assert.equal(ready.confirm(b.id,"p1","guild").reason,"not_member");
+  assert.equal(ready.snapshot(a.id).confirmed.length,1);
+  assert.equal(ready.snapshot(b.id).confirmed.length,0);
+  assert.equal(ready.finishIfReady(a.id,10),null);
 });
 test("stage transitions and component IDs are session-scoped", () => {
   const [a,b] = sessions.getActiveSessions("guild");
