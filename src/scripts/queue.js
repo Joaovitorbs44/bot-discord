@@ -653,7 +653,6 @@ module.exports = {
   updateQueuePanel,
   restoreQueuePanel,
   removePlayer,
-  removePlayersFromQueue,
-  createMatchFoundMessage
+  removePlayersFromQueue
 };
 
