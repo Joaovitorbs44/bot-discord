@@ -98,4 +98,52 @@ function restoreGroup(guildId, discordIds) {
   })();
 }
 
-module.exports = {ensureTables, playerBusy, enqueue, dequeue, listWaiting, reserveGroup, restoreGroup};
+// Atomic handoff: waiting players become members of one persisted session.
+// Call only after the stage controllers have been migrated and the old
+// one-active-session-per-guild index has been replaced.
+function reserveIntoSession(guildId, channelId, count = 10) {
+  ensureTables();
+  if (!guildId || !channelId || !Number.isSafeInteger(count) || count < 2) {
+    throw new Error("INVALID_SESSION_RESERVATION");
+  }
+  return db.transaction(() => {
+    const rows = db.prepare(`
+      SELECT discord_id FROM matchmaking_waiting_players
+      WHERE guild_id=? ORDER BY joined_at ASC, discord_id ASC LIMIT ?
+    `).all(guildId, count);
+    if (rows.length !== count) return null;
+    if (rows.some(row => playerBusy(guildId, row.discord_id))) return null;
+
+    const result = db.prepare(`
+      INSERT INTO matchmaking_sessions (guild_id,channel_id,stage,status,state_json)
+      VALUES (?,?,'ready_check','active','{}')
+    `).run(guildId, channelId);
+    const sessionId = Number(result.lastInsertRowid);
+    const insert = db.prepare(`
+      INSERT INTO matchmaking_session_players (session_id,discord_id)
+      VALUES (?,?)
+    `);
+    const remove = db.prepare(`
+      DELETE FROM matchmaking_waiting_players WHERE guild_id=? AND discord_id=?
+    `);
+    for (const row of rows) {
+      insert.run(sessionId, row.discord_id);
+      if (remove.run(guildId, row.discord_id).changes !== 1) {
+        throw new Error("QUEUE_HANDOFF_CONFLICT");
+      }
+    }
+    return {sessionId, players:rows.map(row => row.discord_id)};
+  })();
+}
+
+// Detect players already assigned to active sessions before attempting to
+// enqueue or reserve them; this also covers a legacy active queue session.
+function getBusyPlayerIds(guildId) {
+  return db.prepare(`
+    SELECT DISTINCT sp.discord_id FROM matchmaking_session_players sp
+    JOIN matchmaking_sessions s ON s.id=sp.session_id
+    WHERE s.guild_id=? AND s.status='active'
+  `).all(guildId).map(row => row.discord_id);
+}
+
+module.exports = {ensureTables, playerBusy, enqueue, dequeue, listWaiting, reserveGroup, restoreGroup, reserveIntoSession, getBusyPlayerIds};
