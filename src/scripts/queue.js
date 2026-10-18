@@ -334,6 +334,33 @@ async function leaveQueue(interaction) {
   }
 }
 
+function multiLobbyEnabled() {
+  return process.env.MULTILOBBY_QUEUE_ENABLED === "true";
+}
+
+function createMultiLobbyQueuePanel() {
+  const waiting = require("../services/waitingQueue");
+  const players = waiting.listWaiting(config.discord.guildId);
+  const count = players.length;
+  const required = config.matchmaking.requiredPlayers;
+  const remainder = count % required;
+  const needed = remainder === 0 ? required : required - remainder;
+  const active = db.prepare(`SELECT COUNT(*) AS total FROM matchmaking_sessions
+    WHERE guild_id=? AND status='active' AND stage!='queue'`).get(config.discord.guildId);
+  const lines = players.slice(0,30).map((player,index) =>
+    `**${index+1}.** <@${player.discord_id}> · <t:${Math.floor(player.joined_at/1000)}:t>`
+  );
+  const container = new ContainerBuilder().setAccentColor(COLORS.primary)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `## ${PANEL_MARKER}\n### Fila contínua · 5v5\n**Status:** 🟢 Fila aberta\n**Aguardando:** ${count}\n**Faltam para o próximo lobby:** ${needed}\n**Lobbies ativos:** ${active.total}\n\n### Jogadores aguardando\n${lines.join("\n") || "Nenhum jogador aguardando."}`
+    ));
+  const buttons = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("queue_join").setLabel("Entrar na fila").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("queue_leave").setLabel("Sair da fila").setStyle(ButtonStyle.Secondary)
+  );
+  return {content:null,embeds:[],components:[container,buttons],flags:MessageFlags.IsComponentsV2,allowedMentions:{parse:[]}};
+}
+
 function createQueuePanel() {
   const players = queueState.getPlayers();
   const joinedTimes = getJoinedTimes();
