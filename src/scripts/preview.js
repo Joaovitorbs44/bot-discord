@@ -17,6 +17,7 @@ const {
 } = require("discord.js");
 
 const config = require("../config/config");
+const { renderMatchResult } = require("../ui/matchResultImage");
 const {
   MAP_POOL,
   generateMapVetoImage
@@ -1235,53 +1236,32 @@ async function buildPanel(session) {
 
     case "result": {
       ensureResult(session);
-
       const loser = session.winner === "A" ? "B" : "A";
-      const winners = session.teams[session.winner];
-      const losers = session.teams[loser];
-
-      container = createContainer(
-        "MATCH COMPLETE",
-        "RESULTADO OFICIAL  /  PARTIDA #482731"
+      const formatPlayers = ids => ids.map(id => ({
+        name: id,
+        rank: PLAYERS.find(p => p.id === id)?.rank || "—",
+        captain: session.captains.includes(id)
+      }));
+      const buffer = await renderMatchResult({
+        matchCode: "482731",
+        map: session.selectedMap,
+        winner: session.winner,
+        winners: formatPlayers(session.teams[session.winner]),
+        losers: formatPlayers(session.teams[loser])
+      });
+      const filename = "invi-six-pro-v2-result.png";
+      files.push(new AttachmentBuilder(buffer, { name: filename }));
+      container = new ContainerBuilder().setAccentColor(PRIMARY);
+      container.addMediaGalleryComponents(
+        new MediaGalleryBuilder().addItems(
+          new MediaGalleryItemBuilder().setURL("attachment://" + filename)
+        )
       );
-
-      addText(
-        container,
-        "###  VITÓRIA  /  TIME " + session.winner + "\n" +
-        "-# " + session.selectedMap.toUpperCase() + "   ·   " +
-        (session.finished ? "PARTIDA FINALIZADA" : "PRÉVIA INTERATIVA")
+      addText(container,
+        "-# INVI SIX PRO  /  PREMIUM GLASS V2\n" +
+        "**Time " + session.winner + " venceu** · " + session.selectedMap +
+        "\n-# Vencedores +5 pts  ·  Derrotados −3 pts"
       );
-
-      separator(container);
-
-      addText(
-        container,
-        "## +5 PTS  /  WIN\n" +
-        "-# EQUIPE VENCEDORA\n\n" +
-        winners.map((id, i) => {
-          const player = PLAYERS.find(p => p.id === id);
-          const captain = session.captains.includes(id) ? "  ·  CAPTAIN" : "";
-          return "**" + String(i + 1).padStart(2, "0") + "  /  " + id + "**" +
-            "     " + (player?.rank || "—") + captain;
-        }).join("\n")
-      );
-
-      separator(container);
-
-      addText(
-        container,
-        "### −3 PTS  /  LOSS\n" +
-        "-# EQUIPE DERROTADA\n\n" +
-        losers.map((id, i) => {
-          const player = PLAYERS.find(p => p.id === id);
-          const captain = session.captains.includes(id) ? "  ·  CAPTAIN" : "";
-          return "**" + String(i + 1).padStart(2, "0") + "  /  " + id + "**" +
-            "     " + (player?.rank || "—") + captain;
-        }).join("\n")
-      );
-
-      separator(container);
-      addText(container, "-# MATCH ID  #482731    ·    SEASON 01    ·    INVI SIX PRO");
       break;
     }
 
