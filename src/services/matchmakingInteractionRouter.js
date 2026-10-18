@@ -13,6 +13,7 @@ const mapVeto = require("./mapVetoSessions");
 const mapVetoPanels = require("./mapVetoPanels");
 const sideChoices = require("./sideChoiceSessions");
 const sidePanels = require("./sideChoicePanels");
+const matchCreation = require("./matchCreationSessions");
 const config = require("../config/config");
 
 async function reject(interaction, content) {
@@ -135,9 +136,17 @@ async function handleSessionComponent(interaction) {
   if (parsed.stage === "side_choice" && interaction.isButton() &&
       ["attack","defense"].includes(parsed.action)) {
     const result = sideChoices.choose(parsed.sessionId,interaction.guildId,interaction.user.id,parsed.action);
-    await reject(interaction,result.ok
-      ? `Lados registrados: Time A — ${result.sideA}; Time B — ${result.sideB}. Aguardando criação da partida.`
-      : "Somente o capitão A pode escolher os lados.");
+    if (!result.ok) {
+      await reject(interaction,"Somente o capitão A pode escolher os lados.");
+      return true;
+    }
+    await reject(interaction,`Lados registrados: Time A — ${result.sideA}; Time B — ${result.sideB}. Criando partida...`);
+    try {
+      await matchCreation.createAndPublish(interaction.client,parsed.sessionId);
+    } catch (error) {
+      console.error("[MULTILOBBY] Match creation/publication failed:",parsed.sessionId,error);
+      await reject(interaction,"Não foi possível concluir a publicação. A sessão permanece registrada para recuperação.");
+    }
     return true;
   }
   await reject(interaction,"Esta etapa do multi-lobby ainda não foi habilitada.");
