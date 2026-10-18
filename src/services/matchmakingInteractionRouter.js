@@ -6,6 +6,8 @@ const sessions = require("./matchmakingSessions");
 const ready = require("./readyCheckSessions");
 const panels = require("./readyCheckPanels");
 const captains = require("./captainVoteSessions");
+const captainPanels = require("./captainVotePanels");
+const config = require("../config/config");
 
 async function reject(interaction, content) {
   const payload = {content, flags:MessageFlags.Ephemeral};
@@ -27,8 +29,13 @@ async function handleReady(interaction, parsed) {
   }
   try { await panels.publish(interaction.client,parsed.sessionId); }
   catch (error) { console.error("[MULTILOBBY] Ready panel refresh failed:",error); }
-  // Do not advance automatically: the captain-vote Discord stage still uses
-  // a singleton controller. The future orchestrator must handle this handoff.
+  if (result.complete) {
+    const next = ready.finishIfReady(parsed.sessionId,config.matchmaking.requiredPlayers);
+    if (next) {
+      try { await captainPanels.publish(interaction.client,parsed.sessionId); }
+      catch (error) { console.error("[MULTILOBBY] Captain panel publish failed:",error); }
+    }
+  }
   return reject(interaction,
     result.complete
       ? "Presença confirmada. Todos confirmaram; aguardando início da votação."
@@ -66,6 +73,10 @@ async function handleSessionComponent(interaction) {
       return true;
     }
     await reject(interaction,`Voto registrado (${result.count}/${result.total}).`);
+    if (result.count < result.total) {
+      try { await captainPanels.publish(interaction.client,parsed.sessionId); }
+      catch (error) { console.error("[MULTILOBBY] Captain panel refresh failed:",error); }
+    }
     if (result.count === result.total) {
       try { captains.finish(parsed.sessionId); }
       catch (error) { console.error("[MULTILOBBY] Captain vote handoff failed:",error); }
