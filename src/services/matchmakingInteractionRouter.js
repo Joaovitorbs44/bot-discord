@@ -9,6 +9,8 @@ const captains = require("./captainVoteSessions");
 const captainPanels = require("./captainVotePanels");
 const drafts = require("./draftSessions");
 const draftPanels = require("./draftPanels");
+const mapVeto = require("./mapVetoSessions");
+const mapVetoPanels = require("./mapVetoPanels");
 const config = require("../config/config");
 
 async function reject(interaction, content) {
@@ -63,7 +65,9 @@ async function handleSessionComponent(interaction) {
       ? (authorized.state.captainVotePanel?.channelId || config.discord.draftChannelId)
       : parsed.stage === "draft"
         ? (authorized.state.draftPanel?.channelId || config.discord.draftChannelId)
-        : authorized.session.channel_id;
+        : parsed.stage === "map_veto"
+          ? (authorized.state.mapVetoPanel?.channelId || config.discord.mapVetoChannelId)
+          : authorized.session.channel_id;
   if (!channelId || interaction.channelId !== channelId) {
     await reject(interaction,"Este controle pertence a outro canal do lobby.");
     return true;
@@ -105,9 +109,22 @@ async function handleSessionComponent(interaction) {
       return true;
     }
     await reject(interaction,result.finished ? "Draft concluído. Preparando veto de mapas." : "Jogador selecionado.");
+    try {
+      if (result.finished) await mapVetoPanels.publish(interaction.client,parsed.sessionId);
+      else await draftPanels.publish(interaction.client,parsed.sessionId);
+    } catch (error) { console.error("[MULTILOBBY] Draft handoff failed:",error); }
+    return true;
+  }
+  if (parsed.stage === "map_veto" && interaction.isStringSelectMenu() && parsed.action === "ban") {
+    const result = mapVeto.ban(parsed.sessionId,interaction.guildId,interaction.user.id,interaction.values?.[0]);
+    if (!result.ok) {
+      await reject(interaction,"Banimento inválido ou não é sua vez neste lobby.");
+      return true;
+    }
+    await reject(interaction,result.finished ? `Mapa definido: **${result.selectedMap}**.` : "Mapa banido.");
     if (!result.finished) {
-      try { await draftPanels.publish(interaction.client,parsed.sessionId); }
-      catch (error) { console.error("[MULTILOBBY] Draft refresh failed:",error); }
+      try { await mapVetoPanels.publish(interaction.client,parsed.sessionId); }
+      catch (error) { console.error("[MULTILOBBY] Map veto refresh failed:",error); }
     }
     return true;
   }
