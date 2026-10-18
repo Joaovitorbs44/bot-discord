@@ -34,6 +34,7 @@ function rollback(){
   if(grouped.length)throw new Error("MULTIPLE_ACTIVE_SESSIONS: cannot restore legacy unique index");
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_matchmaking_one_active_guild
     ON matchmaking_sessions(guild_id) WHERE status='active'`);
+  db.exec("DROP INDEX IF EXISTS idx_matchmaking_active_guild_stage");
   return {before,after:inspect()};
  })();
 }
