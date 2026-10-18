@@ -128,7 +128,7 @@ function createPanel({
     .setAccentColor(color)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "## INVISIXTATIONAL\n" +
+        "## INVI SIX PRO\n" +
         `### ${safeText(title, 150)}`
       )
     )
