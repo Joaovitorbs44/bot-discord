@@ -778,6 +778,17 @@ async function finishSideChoice(
       `${created.matchCode}`
     );
 
+    // O painel de escolha é temporário. Só remove após
+    // a partida ter sido gravada e publicada com sucesso.
+    const oldSideMessage = sideMessage;
+    if (oldSideMessage?.author?.id === sideClient?.user?.id) {
+      try {
+        await oldSideMessage.delete();
+      } catch (error) {
+        console.warn("[SIDE] Painel temporário não excluído:", error.message);
+      }
+    }
+
     // createMatch já encerra a sessão
     // de matchmaking no SQLite.
     resetSideChoice();

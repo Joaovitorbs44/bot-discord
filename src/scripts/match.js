@@ -370,62 +370,98 @@ function isMatchPublication(message, matchCode, clientId) {
 // PUBLICAR PARTIDA
 // ==========================================
 
-async function publishMatch(client, match, data, season) {
-  const channelId =
-    config.discord.resultsChannelId;
+async function publishMatch(client, match, data, season, sessionId = null) {
+  const channelId = config.discord.resultsChannelId;
+  if (!channelId) throw new Error("RESULTS_CHANNEL_NOT_CONFIGURED");
+  const channel = await client.channels.fetch(channelId);
+  if (!channel?.isTextBased() || !channel.send) {
+    throw new Error("INVALID_RESULTS_CHANNEL");
+  }
 
-  if (!channelId) {
-    throw new Error(
-      "RESULTS_CHANNEL_NOT_CONFIGURED"
+  const session = sessionId
+    ? db.prepare("SELECT * FROM matchmaking_sessions WHERE id = ?").get(sessionId)
+    : null;
+  const state = session ? readSessionState(session) : {};
+  let existing = null;
+
+  if (state.resultMessageId) {
+    try {
+      existing = await channel.messages.fetch(state.resultMessageId);
+    } catch (error) {
+      if (error.code !== 10008) throw error;
+    }
+  }
+
+  if (!existing) {
+    const recent = await channel.messages.fetch({ limit: 100 });
+    existing = recent.find(message =>
+      isMatchPublication(message, match.matchCode, client.user.id)
     );
   }
 
-  const channel =
-    await client.channels.fetch(channelId);
-
-  if (
-    !channel?.isTextBased() ||
-    !channel.send
-  ) {
-    throw new Error(
-      "INVALID_RESULTS_CHANNEL"
-    );
+  if (!existing) {
+    existing = await channel.send(createMatchPanel(match, data, season));
   }
 
-  // Proteção contra republicações recentes.
-  // O SQLite impede partidas duplicadas.
-  // A busca de mensagens é uma proteção adicional.
-  const recent = await channel.messages.fetch({
-    limit: 100
-  });
-
-  const existing = recent.find(message =>
-    isMatchPublication(
-      message,
-      match.matchCode,
-      client.user.id
-    )
-  );
-
-  if (existing) {
-    console.log(
-      `Partida ${match.matchCode} já publicada ` +
-      `na mensagem ${existing.id}.`
-    );
-
-    return channel;
+  if (session && state.resultMessageId !== existing.id) {
+    state.resultMessageId = existing.id;
+    state.resultChannelId = channel.id;
+    db.prepare(`
+      UPDATE matchmaking_sessions
+      SET state_json = ?, updated_at = ?
+      WHERE id = ? AND match_id = ?
+    `).run(JSON.stringify(state), Date.now(), session.id, match.matchId);
   }
-
-  await channel.send(
-    createMatchPanel(match, data, season)
-  );
-
-  console.log(
-    `Partida ${match.matchCode} publicada ` +
-    `no canal ${channel.id}.`
-  );
 
   return channel;
+}
+
+// Recupera partidas já gravadas cuja publicação falhou antes de
+// salvar o ID da mensagem. Nunca cria uma nova partida.
+async function restoreMatchPublications(client) {
+  const sessions = db.prepare(`
+    SELECT s.*, m.match_code, m.map, m.side_a, m.side_b,
+           m.captain_a_discord_id, m.captain_b_discord_id,
+           se.name AS season_name
+    FROM matchmaking_sessions s
+    JOIN matches m ON m.id = s.match_id
+    LEFT JOIN seasons se ON se.id = m.season_id
+    WHERE s.status = 'completed'
+      AND s.match_id IS NOT NULL
+      AND m.status IN ('playing', 'pending_confirmation')
+    ORDER BY s.id DESC
+    LIMIT 100
+  `).all();
+
+  for (const session of sessions) {
+    const state = readSessionState(session);
+    if (state.resultMessageId) continue;
+    const saved = state.sideChoice;
+    if (!saved?.teamA || !saved?.teamB) {
+      console.warn("[MATCH] Dados de times indisponíveis:", session.match_code);
+      continue;
+    }
+    try {
+      await publishMatch(
+        client,
+        { matchId: session.match_id, matchCode: session.match_code },
+        {
+          map: session.map,
+          sideA: session.side_a,
+          sideB: session.side_b,
+          captainA: saved.captainA,
+          captainB: saved.captainB,
+          teamA: saved.teamA,
+          teamB: saved.teamB
+        },
+        { name: session.season_name || "Temporada" },
+        session.id
+      );
+      console.log("[MATCH] Publicação recuperada:", session.match_code);
+    } catch (error) {
+      console.error("[MATCH] Falha ao recuperar publicação:", session.match_code, error);
+    }
+  }
 }
 
 // ==========================================
@@ -658,7 +694,8 @@ async function createMatch(interaction, matchData) {
       interaction.client,
       created,
       matchData,
-      season
+      season,
+      currentSession.id
     );
 
   try {
@@ -688,5 +725,6 @@ async function createMatch(interaction, matchData) {
 module.exports = {
   createMatch,
   generateMatchCode,
+  restoreMatchPublications,
   validateMatchData
 };

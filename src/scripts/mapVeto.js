@@ -498,18 +498,8 @@ async function startMapVeto(
     await updateVetoMessage();
     scheduleBanTimeout();
 
-    try {
-      await interaction.followUp({
-        content:
-          `🗺️ Veto iniciado em ` +
-          `<#${vetoChannelId}>.`
-      });
-    } catch (error) {
-      console.warn(
-        "[MAP VETO] Aviso não enviado:",
-        error.message
-      );
-    }
+    // O painel já foi publicado no canal de veto.
+    // Não usa tokens de interações antigas nem cria avisos extras.
   } catch (error) {
     console.error(
       "[MAP VETO] Falha ao publicar painel:",
@@ -556,7 +546,11 @@ function applyBan(map, automatic = false) {
 }
 
 async function handleMapVeto(interaction) {
-  if (!vetoActive || vetoFinishing) {
+  const currentSession = getSession();
+  if (!vetoActive || vetoFinishing ||
+      !currentSession || currentSession.id !== vetoSessionId ||
+      currentSession.stage !== "map_veto" ||
+      (vetoMessage && interaction.message?.id !== vetoMessage.id)) {
     return interaction.reply({
       content: "Não existe um veto de mapas ativo.",
       flags: MessageFlags.Ephemeral
@@ -637,7 +631,10 @@ async function handleMapVeto(interaction) {
 }
 
 async function handleMapVetoTimeout() {
-  if (!vetoActive || vetoFinishing) return;
+  const currentSession = getSession();
+  if (!vetoActive || vetoFinishing ||
+      !currentSession || currentSession.id !== vetoSessionId ||
+      currentSession.stage !== "map_veto") return;
 
   if (processingBan) return;
 
@@ -740,7 +737,7 @@ async function finishMapVeto(interaction = null) {
   state.mapVetoCompleted = true;
   state.vetoResult = vetoResult;
 
-  db.prepare(`
+  const transitioned = db.prepare(`
     UPDATE matchmaking_sessions
     SET stage = 'side_choice',
         deadline_at = NULL,
@@ -748,12 +745,19 @@ async function finishMapVeto(interaction = null) {
         updated_at = ?
     WHERE id = ?
       AND stage = 'map_veto'
+      AND status = 'active'
   `).run(
     JSON.stringify(state),
     Date.now(),
     session.id
   );
 
+  if (transitioned.changes !== 1) {
+    vetoFinishing = false;
+    throw new Error("MAP_VETO_TRANSITION_FAILED");
+  }
+
+  const oldVetoMessage = vetoMessage;
   try {
     await updateVetoMessage(true);
   } catch (error) {
@@ -780,11 +784,17 @@ async function finishMapVeto(interaction = null) {
       teamB: [...vetoResult.teamB]
     });
 
-    console.log(
-      "[MAP VETO] Finalizado:",
-      selectedMap
-    );
+    // Só exclui o painel temporário após a escolha de lado
+    // ter sido publicada com sucesso.
+    if (oldVetoMessage?.author?.id === vetoClient.user.id) {
+      try {
+        await oldVetoMessage.delete();
+      } catch (error) {
+        console.warn("[MAP VETO] Painel antigo não excluído:", error.message);
+      }
+    }
 
+    console.log("[MAP VETO] Finalizado:", selectedMap);
     resetMapVeto();
   } catch (error) {
     vetoFinishing = false;
@@ -811,19 +821,36 @@ async function restoreMapVeto(client) {
 
   if (vetoActive) return true;
 
-  const state = parseState(session.state_json).mapVeto;
+  const persisted = parseState(session.state_json);
+  let state = persisted.mapVeto;
 
-  if (
-    !state ||
-    !Array.isArray(state.teamA) ||
-    !Array.isArray(state.teamB) ||
-    !Array.isArray(state.availableMaps) ||
-    !Array.isArray(state.bannedMaps)
-  ) {
-    console.error(
-      "[MAP VETO] Estado persistido inválido."
-    );
+  // O draft pode ter avançado para map_veto antes de
+  // conseguir publicar o primeiro painel.
+  if (!state && persisted.draftCompleted && persisted.draft) {
+    const draft = persisted.draft;
+    if (draft.captainA && draft.captainB &&
+        Array.isArray(draft.teamA) && Array.isArray(draft.teamB)) {
+      state = {
+        captainA: draft.captainA,
+        captainB: draft.captainB,
+        teamA: draft.teamA,
+        teamB: draft.teamB,
+        availableMaps: [...MAP_POOL],
+        bannedMaps: [],
+        currentCaptain: "A",
+        selectedMap: null,
+        messageId: null,
+        channelId: config.discord.mapVetoChannelId
+      };
+      console.warn("[MAP VETO] Recuperando veto a partir do draft concluído.");
+    }
+  }
 
+  if (!state || !Array.isArray(state.teamA) ||
+      !Array.isArray(state.teamB) ||
+      !Array.isArray(state.availableMaps) ||
+      !Array.isArray(state.bannedMaps)) {
+    console.error("[MAP VETO] Estado persistido inválido.");
     return false;
   }
 
@@ -877,22 +904,20 @@ async function restoreMapVeto(client) {
       return true;
     }
 
-    // Evita restaurar um painel com prazo já
-    // encerrado sem oferecer novo tempo ao capitão.
-    if (!banDeadline || Date.now() >= banDeadline) {
-      banDeadline =
-        Date.now() + BAN_TIMEOUT_SECONDS * 1000;
-
+    if (!banDeadline) {
+      // Estado criado pelo draft, sem rodada iniciada.
+      banDeadline = Date.now() + BAN_TIMEOUT_SECONDS * 1000;
       saveMapVetoState();
-
-      console.log(
-        "[MAP VETO] Prazo renovado na recuperação."
-      );
     }
 
     await updateVetoMessage();
 
-    scheduleBanTimeout();
+    if (Date.now() >= banDeadline) {
+      // Respeita o prazo persistido: o banimento expirado é automático.
+      await handleMapVetoTimeout();
+    } else {
+      scheduleBanTimeout();
+    }
 
     console.log(
       `[MAP VETO] Recuperado com ` +
