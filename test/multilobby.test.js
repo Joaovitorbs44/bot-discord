@@ -22,6 +22,7 @@ db.exec(`
    guild_id TEXT NOT NULL, discord_id TEXT NOT NULL, joined_at INTEGER NOT NULL,
    PRIMARY KEY(guild_id,discord_id)
  );
+ CREATE TABLE players(discord_id TEXT PRIMARY KEY,r6_rank TEXT NOT NULL);
  CREATE TABLE matches(id INTEGER PRIMARY KEY, status TEXT);
  CREATE TABLE match_players(match_id INTEGER,discord_id TEXT);
 `);
@@ -34,6 +35,10 @@ Module._load = function(request, parent, isMain) {
 const waiting = require("../src/services/waitingQueue");
 const sessions = require("../src/services/matchmakingSessions");
 const ready = require("../src/services/readyCheckSessions");
+const captains = require("../src/services/captainVoteSessions");
+const draft = require("../src/services/draftSessions");
+const veto = require("../src/services/mapVetoSessions");
+const sides = require("../src/services/sideChoiceSessions");
 Module._load = originalLoad;
 
 function firstPlayerInSession(id) { return db.prepare("SELECT discord_id FROM matchmaking_session_players WHERE session_id=? ORDER BY id LIMIT 1").get(id).discord_id; }
@@ -76,5 +81,57 @@ test("stage transitions and component IDs are session-scoped", () => {
 test("duplicate session handoff does not steal waiting players", () => {
   assert.equal(waiting.reserveIntoSession("guild","channel",10),null);
   assert.equal(waiting.listWaiting("guild").length,1);
+});
+test("two lobbies independently complete captain voting, draft, map veto and side choice", () => {
+  const [a,b] = sessions.getActiveSessions("guild");
+  const addPlayer=db.prepare("INSERT INTO players(discord_id,r6_rank) VALUES(?,?)");
+  for(let i=1;i<=20;i++)addPlayer.run("p"+i,i%3===0?"diamante":"ouro");
+  // Lobby A was advanced in the preceding stage test; lobby B must finish ready check.
+  assert.equal(sessions.getSession(a.id).stage,"captain_vote");
+  assert.ok(ready.setDeadline(b.id,60));
+  for(const id of ready.snapshot(b.id).waiting)assert.equal(ready.confirm(b.id,id,"guild").ok,true);
+  assert.equal(ready.finishIfReady(b.id,10)?.stage,"captain_vote");
+  for(const sessionId of [a.id,b.id]){
+    const people=captains.roster(sessionId).map(p=>p.discord_id);
+    const candidates=captains.eligible(sessionId);
+    assert.ok(candidates.length>=2);
+    for(let i=0;i<people.length;i++){
+      const vote=captains.vote(sessionId,"guild",people[i],candidates[i%2]);
+      assert.equal(vote.ok,true);
+    }
+    const finished=captains.finish(sessionId);
+    assert.ok(finished);
+    assert.equal(sessions.getSession(sessionId).stage,"draft");
+    assert.equal(draft.snapshot(sessionId).picks,0);
+  }
+  assert.equal(draft.pick(a.id,"guild",sessions.getSession(b.id).captain_a_discord_id,"p21").ok,false);
+  for(let i=0;i<8;i++){
+    for(const sessionId of [a.id,b.id]){
+      const current=draft.snapshot(sessionId);
+      const actor=current.turn==="A"?current.session.captain_a_discord_id:current.session.captain_b_discord_id;
+      const target=current.roster.find(p=>!p.team&&!p.is_captain);
+      assert.equal(draft.pick(sessionId,"guild",actor,target.discord_id).ok,true);
+    }
+  }
+  for(const sessionId of [a.id,b.id]){
+    assert.equal(sessions.getSession(sessionId).stage,"map_veto");
+    const roster=db.prepare("SELECT team,COUNT(*) AS n FROM matchmaking_session_players WHERE session_id=? GROUP BY team").all(sessionId);
+    assert.deepEqual(roster.map(x=>x.n).sort((x,y)=>x-y),[5,5]);
+  }
+  for(let i=0;i<8;i++){
+    for(const sessionId of [a.id,b.id]){
+      const current=veto.snapshot(sessionId);
+      const actor=current.turn==="A"?current.session.captain_a_discord_id:current.session.captain_b_discord_id;
+      assert.equal(veto.ban(sessionId,"guild",actor,current.available[0]).ok,true);
+    }
+  }
+  assert.equal(sessions.getSession(a.id).stage,"side_choice");
+  assert.equal(sessions.getSession(b.id).stage,"side_choice");
+  assert.equal(sides.choose(a.id,"guild",sessions.getSession(a.id).captain_a_discord_id,"attack").ok,true);
+  assert.equal(sides.choose(b.id,"guild",sessions.getSession(b.id).captain_a_discord_id,"defense").ok,true);
+  assert.equal(sides.choose(a.id,"guild",sessions.getSession(a.id).captain_a_discord_id,"defense").reason,"already_chosen");
+  assert.equal(sessions.parseState(sessions.getSession(a.id)).sideA,"Ataque");
+  assert.equal(sessions.parseState(sessions.getSession(b.id)).sideA,"Defesa");
+  assert.notEqual(a.id,b.id);
 });
 test.after(() => { sessions.clearAllTimers(); db.close(); });
