@@ -11,7 +11,10 @@ const {
   command: previewCommand
 } = require("./preview");
 
+const { command: homologationCommand } = require("./homologation");
+
 const commands = [
+  homologationCommand,
   new SlashCommandBuilder()
     .setName("perfil")
     .setDescription("Mostra o perfil de um jogador.")
@@ -247,3 +250,4 @@ async function registerCommands() {
 }
 
 registerCommands();
+

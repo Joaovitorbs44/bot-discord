@@ -1,3 +1,4 @@
+const { execute: executeHomologation } = require("../scripts/homologation");
 
 const {
   Client,
@@ -704,6 +705,8 @@ client.on(
         interaction.isChatInputCommand()
       ) {
         switch (interaction.commandName) {
+          case "homologacao":
+            return executeHomologation(interaction);
           case "preview":
             return executePreview(
               interaction
@@ -1170,3 +1173,4 @@ async function handleAccessRank(interaction) {
 // ==========================================
 
 client.login(config.discord.token);
+
