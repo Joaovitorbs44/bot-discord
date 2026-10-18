@@ -27,6 +27,7 @@ const { handleRankingPage } = require("../scripts/ranking");
 const { enforceChannel } = require("../scripts/channelGuard");
 const { handleSessionComponent } = require("../services/matchmakingInteractionRouter");
 const readyCheckPanels = require("../services/readyCheckPanels");
+const captainVotePanels = require("../services/captainVotePanels");
 const handleSolicitacoes = require("../scripts/solicitacoes");
 
 // ==========================================
@@ -301,6 +302,7 @@ async function initializeMatchmaking(readyClient) {
 
     if (process.env.MULTILOBBY_RECOVERY_ENABLED === "true") {
       await readyCheckPanels.recover(readyClient, config.discord.guildId);
+      await captainVotePanels.recover(readyClient, config.discord.guildId);
     }
 
     matchmakingInitialized = true;
