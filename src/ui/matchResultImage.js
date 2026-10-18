@@ -6,7 +6,7 @@ const WIDTH = 1100, HEIGHT = 690;
 const escape = value => String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&apos;");
 // Glyphs are drawn as SVG rectangles. This is independent of installed fonts.
 const text = (x,y,value,size=22,color="#F4F6FA",weight=500,extra="") => {
-  const scale = size >= 48 ? 6 : size >= 30 ? 4 : size >= 20 ? 3 : 2;
+  const scale = size >= 48 ? 5 : size >= 30 ? 3 : size >= 20 ? 2 : 1.5;
   const anchorEnd = /text-anchor="end"/.test(extra);
   const label = String(value ?? "").toUpperCase().replace(/[ÀÁÂÃÄ]/g,"A").replace(/[ÈÉÊË]/g,"E").replace(/[ÌÍÎÏ]/g,"I").replace(/[ÒÓÔÕÖ]/g,"O").replace(/[ÙÚÛÜ]/g,"U").replace(/Ç/g,"C").replace(/[^A-Z0-9 -]/g," ");
   const width = label.length * 6 * scale;
@@ -16,9 +16,9 @@ const rect = (x,y,w,h,r,fill,stroke="none",opacity=1) =>
   '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+r+'" fill="'+fill+'" stroke="'+stroke+'" opacity="'+opacity+'"/>';
 const row = (player,index,x,y) =>
   text(x,y,String(index+1).padStart(2,"0"),16,"#FF6558",700)+
-  text(x+44,y,player.name,20,"#F7F8FC",650)+
-  text(x+275,y,player.rank||"-",16,"#AEB8C9",400)+
-  (player.captain?text(x+394,y,"CAPTAIN",12,"#FF958D",700):"");
+  text(x+44,y,player.name,18,"#F7F8FC",650)+
+  text(x+245,y,player.rank||"-",14,"#AEB8C9",400)+
+  (player.captain?text(x+382,y,"CAPTAIN",12,"#FF958D",700):"");
 
 async function renderMatchResult({matchCode="482731",map="Fortress",winner="B",winners=[],losers=[]}={}) {
   const left=50, right=565;
@@ -35,10 +35,10 @@ async function renderMatchResult({matchCode="482731",map="Fortress",winner="B",w
     '<circle cx="120" cy="680" r="240" fill="#32516D" opacity=".14" filter="url(#blur)"/>'+
     rect(28,28,1044,634,28,"url(#glass)","#FFFFFF25")+
     rect(50,54,6,34,3,"#FF3D2C")+
-    text(70,78,"INVI SIX PRO",24,"#FFFFFF",800,'letter-spacing="1.8"')+
+    text(70,78,"INVI SIX PRO",20,"#FFFFFF",800,'letter-spacing="1.8"')+
     text(1020,77,"MATCH REPORT - SEASON 01",14,"#A6B0C2",600,'text-anchor="end" letter-spacing="1.3"')+
     '<line x1="50" y1="105" x2="1050" y2="105" stroke="#FFFFFF24"/>'+
-    text(54,157,"VICTORY",54,"#FFFFFF",800,'letter-spacing="-1.5"')+
+    text(54,157,"VICTORY",45,"#FFFFFF",800,'letter-spacing="-1.5"')+
     text(56,190,"TEAM "+winner+" - "+map.toUpperCase()+" - "+matchCode,16,"#B6C0D1",600,'letter-spacing="1"')+
     rect(814,125,210,82,16,"#FF3D2C")+
     text(836,158,"MATCH STATUS",13,"#FFE3DF",700,'letter-spacing="1"')+
@@ -48,9 +48,9 @@ async function renderMatchResult({matchCode="482731",map="Fortress",winner="B",w
     rect(left+16,255,448,70,14,"#2E4A42")+
     rect(right+16,255,453,70,14,"#47343B")+
     text(left+32,278,"WINNERS",14,"#A7E8C7",700,'letter-spacing="1.5"')+
-    text(left+32,312,"+5 PTS",32,"#FFFFFF",800)+
+    text(left+32,312,"+5 PTS",28,"#FFFFFF",800)+
     text(right+32,278,"DEFEAT",14,"#F0B5B7",700,'letter-spacing="1.5"')+
-    text(right+32,312,"-3 PTS",32,"#FFFFFF",800)+
+    text(right+32,312,"-3 PTS",28,"#FFFFFF",800)+
     roster(winners,left+30)+roster(losers,right+30)+
     '<line x1="54" y1="626" x2="1046" y2="626" stroke="#FFFFFF26"/>'+
     text(55,646,"INVI SIX PRO - COMPETITIVE",12,"#929EAF",600,'letter-spacing="1.1"')+
