@@ -26,6 +26,7 @@ function expectedChannel(interaction){
   if(interaction.isChatInputCommand())return config.discord[channelByCommand[interaction.commandName]];
   if(interaction.isButton()||interaction.isStringSelectMenu()){
     const id=interaction.customId;
+    if(id.startsWith("ranking_page:"))return config.discord.rankingChannelId;
     const key=Object.keys(channelByComponent).find(k=>id===k);
     return key?config.discord[channelByComponent[key]]:null;
   }
