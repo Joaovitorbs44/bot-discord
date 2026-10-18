@@ -1,0 +1,33 @@
+name: Multi-lobby tests
+on:
+  pull_request:
+    paths:
+      - 'src/services/**'
+      - 'src/database/**'
+      - 'src/scripts/match.js'
+      - 'src/scripts/mapVetoImage.js'
+      - 'src/app/index.js'
+      - 'test/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/multilobby-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Check JavaScript syntax
+        run: |
+          node --check src/app/index.js
+          for file in src/services/*Sessions.js src/services/*Panels.js src/services/multiLobbyQueue.js src/services/multiLobbyMigration.js; do
+            node --check "$file"
+          done
