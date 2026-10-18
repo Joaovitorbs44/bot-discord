@@ -31,6 +31,7 @@ const captainVotePanels = require("../services/captainVotePanels");
 const draftPanels = require("../services/draftPanels");
 const mapVetoPanels = require("../services/mapVetoPanels");
 const sideChoicePanels = require("../services/sideChoicePanels");
+const multiLobbyQueue = require("../services/multiLobbyQueue");
 const handleSolicitacoes = require("../scripts/solicitacoes");
 
 // ==========================================
@@ -309,6 +310,7 @@ async function initializeMatchmaking(readyClient) {
       await draftPanels.recover(readyClient, config.discord.guildId);
       await mapVetoPanels.recover(readyClient, config.discord.guildId);
       await sideChoicePanels.recover(readyClient, config.discord.guildId);
+      if (multiLobbyQueue.enabled()) await multiLobbyQueue.recover(readyClient);
     }
 
     matchmakingInitialized = true;
@@ -498,6 +500,8 @@ client.on(
             ephemeral: true
           });
         }
+
+        if (multiLobbyQueue.enabled()) return multiLobbyQueue.handle(interaction);
 
         return handleQueue(
           interaction
