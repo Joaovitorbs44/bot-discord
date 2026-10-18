@@ -7,6 +7,8 @@ const ready = require("./readyCheckSessions");
 const panels = require("./readyCheckPanels");
 const captains = require("./captainVoteSessions");
 const captainPanels = require("./captainVotePanels");
+const drafts = require("./draftSessions");
+const draftPanels = require("./draftPanels");
 const config = require("../config/config");
 
 async function reject(interaction, content) {
@@ -59,7 +61,9 @@ async function handleSessionComponent(interaction) {
     ? (authorized.state.readyCheckPanel?.channelId || authorized.session.channel_id)
     : parsed.stage === "captain_vote"
       ? (authorized.state.captainVotePanel?.channelId || config.discord.draftChannelId)
-      : authorized.session.channel_id;
+      : parsed.stage === "draft"
+        ? (authorized.state.draftPanel?.channelId || config.discord.draftChannelId)
+        : authorized.session.channel_id;
   if (!channelId || interaction.channelId !== channelId) {
     await reject(interaction,"Este controle pertence a outro canal do lobby.");
     return true;
@@ -87,8 +91,23 @@ async function handleSessionComponent(interaction) {
       catch (error) { console.error("[MULTILOBBY] Captain panel refresh failed:",error); }
     }
     if (result.count === result.total) {
-      try { captains.finish(parsed.sessionId); }
-      catch (error) { console.error("[MULTILOBBY] Captain vote handoff failed:",error); }
+      try {
+        const finished = captains.finish(parsed.sessionId);
+        if (finished) await draftPanels.publish(interaction.client,parsed.sessionId);
+      } catch (error) { console.error("[MULTILOBBY] Captain vote handoff failed:",error); }
+    }
+    return true;
+  }
+  if (parsed.stage === "draft" && interaction.isStringSelectMenu() && parsed.action === "pick") {
+    const result = drafts.pick(parsed.sessionId,interaction.guildId,interaction.user.id,interaction.values?.[0]);
+    if (!result.ok) {
+      await reject(interaction,"Escolha inválida ou não é sua vez neste lobby.");
+      return true;
+    }
+    await reject(interaction,result.finished ? "Draft concluído. Preparando veto de mapas." : "Jogador selecionado.");
+    if (!result.finished) {
+      try { await draftPanels.publish(interaction.client,parsed.sessionId); }
+      catch (error) { console.error("[MULTILOBBY] Draft refresh failed:",error); }
     }
     return true;
   }
