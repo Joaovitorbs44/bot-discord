@@ -22,10 +22,13 @@ const channelByComponent={
   draft_pick:"draftChannelId",map_veto:"mapVetoChannelId",
   side_attack:"mapVetoChannelId",side_defense:"mapVetoChannelId"
 };
+const PREVIEW_CHANNEL_ID="1557714957007593472";
 function expectedChannel(interaction){
+  if(interaction.isChatInputCommand() && interaction.commandName === "preview") return PREVIEW_CHANNEL_ID;
   if(interaction.isChatInputCommand())return config.discord[channelByCommand[interaction.commandName]];
   if(interaction.isButton()||interaction.isStringSelectMenu()){
     const id=interaction.customId;
+    if(id === "preview_select" || id.startsWith("preview_action:") || id.startsWith("preview_choice:")) return PREVIEW_CHANNEL_ID;
     if(id.startsWith("ranking_page:"))return config.discord.rankingChannelId;
     const key=Object.keys(channelByComponent).find(k=>id===k);
     return key?config.discord[channelByComponent[key]]:null;
@@ -39,3 +42,4 @@ async function enforceChannel(interaction){
   return true;
 }
 module.exports={enforceChannel};
+
