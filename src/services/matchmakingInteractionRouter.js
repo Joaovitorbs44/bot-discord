@@ -34,14 +34,16 @@ async function handleReady(interaction, parsed) {
     };
     return reject(interaction,messages[result.reason] || "Não foi possível confirmar.");
   }
-  try { await panels.publish(interaction.client,parsed.sessionId); }
-  catch (error) { console.error("[MULTILOBBY] Ready panel refresh failed:",error); }
   if (result.complete) {
     const next = ready.finishIfReady(parsed.sessionId,config.matchmaking.requiredPlayers);
     if (next) {
       try { await captainPanels.publish(interaction.client,parsed.sessionId); }
       catch (error) { console.error("[MULTILOBBY] Captain panel publish failed:",error); }
     }
+  }
+  if (!result.complete) {
+    try { await panels.publish(interaction.client,parsed.sessionId); }
+    catch (error) { console.error("[MULTILOBBY] Ready panel refresh failed:",error); }
   }
   return reject(interaction,
     result.complete
@@ -137,7 +139,9 @@ async function handleSessionComponent(interaction) {
       ["attack","defense"].includes(parsed.action)) {
     const result = sideChoices.choose(parsed.sessionId,interaction.guildId,interaction.user.id,parsed.action);
     if (!result.ok) {
-      await reject(interaction,"Somente o capitão A pode escolher os lados.");
+      await reject(interaction,result.reason === "already_chosen"
+        ? "Os lados já foram escolhidos. A criação da partida está pendente de recuperação."
+        : "Escolha inválida ou você não é o capitão A.");
       return true;
     }
     await reject(interaction,`Lados registrados: Time A — ${result.sideA}; Time B — ${result.sideB}. Criando partida...`);
@@ -145,7 +149,7 @@ async function handleSessionComponent(interaction) {
       await matchCreation.createAndPublish(interaction.client,parsed.sessionId);
     } catch (error) {
       console.error("[MULTILOBBY] Match creation/publication failed:",parsed.sessionId,error);
-      await reject(interaction,"Não foi possível concluir a publicação. A sessão permanece registrada para recuperação.");
+      console.error("[MULTILOBBY] Match publication remains pending recovery:",parsed.sessionId);
     }
     return true;
   }
