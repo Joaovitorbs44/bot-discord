@@ -4,6 +4,7 @@
 const {MessageFlags} = require("discord.js");
 const sessions = require("./matchmakingSessions");
 const ready = require("./readyCheckSessions");
+const panels = require("./readyCheckPanels");
 
 async function reject(interaction, content) {
   const payload = {content, flags:MessageFlags.Ephemeral};
@@ -23,6 +24,8 @@ async function handleReady(interaction, parsed) {
     };
     return reject(interaction,messages[result.reason] || "Não foi possível confirmar.");
   }
+  try { await panels.publish(interaction.client,parsed.sessionId); }
+  catch (error) { console.error("[MULTILOBBY] Ready panel refresh failed:",error); }
   // Do not advance automatically: the captain-vote Discord stage still uses
   // a singleton controller. The future orchestrator must handle this handoff.
   return reject(interaction,
