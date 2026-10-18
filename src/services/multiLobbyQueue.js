@@ -5,6 +5,7 @@ const config=require("../config/config");
 const waiting=require("./waitingQueue");
 const readyPanels=require("./readyCheckPanels");
 const queueState=require("../scripts/queueState");
+const {updateQueuePanel}=require("../scripts/queue");
 function enabled(){return process.env.MULTILOBBY_QUEUE_ENABLED==="true";}
 function assertReady(){
  const index=db.prepare("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_matchmaking_one_active_guild'").get();
@@ -73,6 +74,8 @@ async function handle(interaction){
   try{await drain(interaction.client,guildId,interaction.channelId);}
   catch(error){console.error("[MULTILOBBY] Queue handoff failed:",error);}
  }
+ try { await updateQueuePanel(); }
+ catch(error) { console.error("[MULTILOBBY] Queue panel update failed:",error); }
  return true;
 }
 async function recover(client){
