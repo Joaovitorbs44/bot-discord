@@ -25,6 +25,7 @@ const handleProfile = require("../scripts/profile");
 const handleRanking = require("../scripts/ranking");
 const { handleRankingPage } = require("../scripts/ranking");
 const { enforceChannel } = require("../scripts/channelGuard");
+const { handleSessionComponent } = require("../services/matchmakingInteractionRouter");
 const handleSolicitacoes = require("../scripts/solicitacoes");
 
 // ==========================================
@@ -337,6 +338,7 @@ client.on(
   Events.InteractionCreate,
   async interaction => {
     try {
+      if (await handleSessionComponent(interaction)) return;
       if (await enforceChannel(interaction)) return;
       if (interaction.isButton() && interaction.customId.startsWith("ranking_page:")) return handleRankingPage(interaction);
 
