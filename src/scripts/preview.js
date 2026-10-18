@@ -295,18 +295,15 @@ function separator(container) {
 }
 
 function createContainer(title, subtitle) {
-  const container = new ContainerBuilder()
-    .setAccentColor(PRIMARY);
+  const container = new ContainerBuilder().setAccentColor(PRIMARY);
 
   addText(
     container,
-    "## INVI SIX PRO\n" +
-    `### ${title}\n` +
-    `-# ${subtitle}`
+    "-#  ◈  INVI SIX PRO     /     COMPETITIVE EXPERIENCE\n" +
+    "## " + title + "\n" +
+    "-# " + subtitle
   );
-
   separator(container);
-
   return container;
 }
 
@@ -1239,51 +1236,52 @@ async function buildPanel(session) {
     case "result": {
       ensureResult(session);
 
+      const loser = session.winner === "A" ? "B" : "A";
+      const winners = session.teams[session.winner];
+      const losers = session.teams[loser];
+
       container = createContainer(
-        "PARTIDA FINALIZADA",
-        "PARTIDA #482731"
+        "MATCH COMPLETE",
+        "RESULTADO OFICIAL  /  PARTIDA #482731"
       );
 
       addText(
         container,
-        `**Mapa:** ${session.selectedMap}\n` +
-        `**Status:** ${
-          session.finished
-            ? "Finalizada"
-            : "Prévia demonstrativa"
-        }\n` +
-        `🏆 **Time ${
-          session.winner
-        } venceu!**`
+        "###  VITÓRIA  /  TIME " + session.winner + "\n" +
+        "-# " + session.selectedMap.toUpperCase() + "   ·   " +
+        (session.finished ? "PARTIDA FINALIZADA" : "PRÉVIA INTERATIVA")
       );
 
       separator(container);
 
       addText(
         container,
-        "### 🏆 VENCEDORES · +5 PONTOS\n" +
-        list(
-          session.teams[session.winner],
-          session.captains
-        )
+        "## +5 PTS  /  WIN\n" +
+        "-# EQUIPE VENCEDORA\n\n" +
+        winners.map((id, i) => {
+          const player = PLAYERS.find(p => p.id === id);
+          const captain = session.captains.includes(id) ? "  ·  CAPTAIN" : "";
+          return "**" + String(i + 1).padStart(2, "0") + "  /  " + id + "**" +
+            "     " + (player?.rank || "—") + captain;
+        }).join("\n")
       );
 
       separator(container);
 
-      const loser =
-        session.winner === "A"
-          ? "B"
-          : "A";
-
       addText(
         container,
-        "### DERROTADOS · -3 PONTOS\n" +
-        list(
-          session.teams[loser],
-          session.captains
-        )
+        "### −3 PTS  /  LOSS\n" +
+        "-# EQUIPE DERROTADA\n\n" +
+        losers.map((id, i) => {
+          const player = PLAYERS.find(p => p.id === id);
+          const captain = session.captains.includes(id) ? "  ·  CAPTAIN" : "";
+          return "**" + String(i + 1).padStart(2, "0") + "  /  " + id + "**" +
+            "     " + (player?.rank || "—") + captain;
+        }).join("\n")
       );
 
+      separator(container);
+      addText(container, "-# MATCH ID  #482731    ·    SEASON 01    ·    INVI SIX PRO");
       break;
     }
 
@@ -1293,33 +1291,16 @@ async function buildPanel(session) {
       );
   }
 
-  // ========================================
-  // CANAL E LIMPEZA SIMULADA
-  // ========================================
-
+  // Rodapé compacto: mantém as informações de transição acessíveis,
+  // sem competir com o conteúdo principal do painel.
   separator(container);
-
   addText(
     container,
-    `**Canal desta etapa:** ${
-      stageChannel(session.panel)
-    }\n` +
-    (
-      session.channelEvents.length
-        ? "**Transições simuladas:**\n" +
-          session.channelEvents
-            .slice(-4)
-            .join("\n")
-        : "-# Sem transições ainda."
-    )
-  );
-
-  separator(container);
-
-  addText(
-    container,
-    "-# Ambiente de testes · " +
-    "Nenhum dado real é modificado."
+    "-# " + stageChannel(session.panel) +
+    "   /   AMBIENTE DE TESTES   /   DADOS FICTÍCIOS" +
+    (session.channelEvents.length
+      ? "\n-# " + session.channelEvents.slice(-2).join("  ·  ").slice(0, 450)
+      : "")
   );
 
   components.unshift(container);
@@ -1393,7 +1374,7 @@ async function createPreviewMessage(
 const command = new SlashCommandBuilder()
   .setName("preview")
   .setDescription(
-    "Simular os painéis do InviSixTational."
+    "Prévia interativa dos painéis INVI SIX PRO V2."
   )
   .setDMPermission(false);
 
