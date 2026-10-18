@@ -21,6 +21,11 @@ function create(sessionId){
  const data=matchData(sessionId);
  if(!data)throw new Error("MATCH_SESSION_NOT_FOUND");
  validateMatchData(data);
+ const existing=sessions.getSession(sessionId);
+ if(existing?.match_id){
+  const previous=db.prepare("SELECT id,match_code FROM matches WHERE id=?").get(existing.match_id);
+  if(previous)return {...{matchId:previous.id,matchCode:previous.match_code,alreadyCreated:true},data,season:null};
+ }
  const season=refreshSeason()?.season;
  if(!season)throw new Error("ACTIVE_SEASON_NOT_FOUND");
  const result=db.transaction(()=>{
@@ -54,7 +59,9 @@ function create(sessionId){
 }
 async function createAndPublish(client,sessionId){
  const result=create(sessionId);
- await publishMatch(client,result,result.data,result.season,sessionId);
+ const season=result.season || db.prepare("SELECT s.* FROM seasons s JOIN matches m ON m.season_id=s.id WHERE m.id=?").get(result.matchId);
+ if(!season)throw new Error("MATCH_SEASON_NOT_FOUND");
+ await publishMatch(client,result,result.data,season,sessionId);
  return result;
 }
 module.exports={matchData,create,createAndPublish};
