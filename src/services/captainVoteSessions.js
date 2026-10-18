@@ -17,8 +17,8 @@ function eligible(sessionId) {
   if (people.length !== 10 || people.some(p => rankIndex(p.r6_rank)<0)) {
     throw new Error("CAPTAIN_VOTE_INVALID_ROSTER");
   }
-  const ranks = [...new Set(people.map(p => rankIndex(p.r6_rank)))].sort((a,b)=>b-a);
-  return people.filter(p => ranks.slice(0,2).includes(rankIndex(p.r6_rank)))
+  return people.sort((a,b) => rankIndex(b.r6_rank)-rankIndex(a.r6_rank) || a.discord_id.localeCompare(b.discord_id))
+    .slice(0,Math.max(2,people.filter(p => rankIndex(p.r6_rank) === Math.max(...people.map(x => rankIndex(x.r6_rank)))).length))
     .map(p => p.discord_id);
 }
 function vote(sessionId,guildId,voterId,candidateId) {
@@ -62,6 +62,8 @@ function finish(sessionId) {
       captainA,captainB,captainVoteFinishedAt:Date.now()
     });
     if (!changed) return null;
+    db.prepare("UPDATE matchmaking_sessions SET captain_a_discord_id=?,captain_b_discord_id=? WHERE id=?")
+      .run(captainA,captainB,sessionId);
     db.prepare(`UPDATE matchmaking_session_players
       SET is_captain=CASE WHEN discord_id IN (?,?) THEN 1 ELSE 0 END,
       team=CASE WHEN discord_id=? THEN 'A' WHEN discord_id=? THEN 'B' ELSE NULL END
