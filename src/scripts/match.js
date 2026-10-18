@@ -724,6 +724,7 @@ async function createMatch(interaction, matchData) {
 
 module.exports = {
   createMatch,
+  publishMatch,
   generateMatchCode,
   restoreMatchPublications,
   validateMatchData

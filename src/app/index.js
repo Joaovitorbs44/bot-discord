@@ -1,3 +1,4 @@
+const { execute: executeHomologation } = require("../scripts/homologation");
 
 const {
   Client,
@@ -23,6 +24,15 @@ const handleApprove = require("../scripts/approve");
 const handleReject = require("../scripts/reject");
 const handleProfile = require("../scripts/profile");
 const handleRanking = require("../scripts/ranking");
+const { handleRankingPage } = require("../scripts/ranking");
+const { enforceChannel } = require("../scripts/channelGuard");
+const { handleSessionComponent } = require("../services/matchmakingInteractionRouter");
+const readyCheckPanels = require("../services/readyCheckPanels");
+const captainVotePanels = require("../services/captainVotePanels");
+const draftPanels = require("../services/draftPanels");
+const mapVetoPanels = require("../services/mapVetoPanels");
+const sideChoicePanels = require("../services/sideChoicePanels");
+const multiLobbyQueue = require("../services/multiLobbyQueue");
 const handleSolicitacoes = require("../scripts/solicitacoes");
 
 // ==========================================
@@ -295,6 +305,15 @@ async function initializeMatchmaking(readyClient) {
       console.error("Erro ao recuperar publicações de partidas:", error);
     }
 
+    if (process.env.MULTILOBBY_RECOVERY_ENABLED === "true") {
+      await readyCheckPanels.recover(readyClient, config.discord.guildId);
+      await captainVotePanels.recover(readyClient, config.discord.guildId);
+      await draftPanels.recover(readyClient, config.discord.guildId);
+      await mapVetoPanels.recover(readyClient, config.discord.guildId);
+      await sideChoicePanels.recover(readyClient, config.discord.guildId);
+      if (multiLobbyQueue.enabled()) await multiLobbyQueue.recover(readyClient);
+    }
+
     matchmakingInitialized = true;
 
     console.log(
@@ -335,6 +354,10 @@ client.on(
   Events.InteractionCreate,
   async interaction => {
     try {
+      if (await handleSessionComponent(interaction)) return;
+      if (await enforceChannel(interaction)) return;
+      if (interaction.isButton() && interaction.customId.startsWith("ranking_page:")) return handleRankingPage(interaction);
+
       // ======================================
       // PREVIEW - NAVEGAÇÃO
       // ======================================
@@ -478,6 +501,8 @@ client.on(
             ephemeral: true
           });
         }
+
+        if (multiLobbyQueue.enabled()) return multiLobbyQueue.handle(interaction);
 
         return handleQueue(
           interaction
@@ -680,6 +705,8 @@ client.on(
         interaction.isChatInputCommand()
       ) {
         switch (interaction.commandName) {
+          case "homologacao":
+            return executeHomologation(interaction);
           case "preview":
             return executePreview(
               interaction
@@ -1146,3 +1173,4 @@ async function handleAccessRank(interaction) {
 // ==========================================
 
 client.login(config.discord.token);
+

@@ -1,6 +1,27 @@
 
 require("dotenv").config();
 
+// Homologação é opt-in e só pode usar um banco isolado.
+// Esta proteção não permite executar duas instâncias com o mesmo token.
+if (process.env.HOMOLOGATION_MODE === "true") {
+  const path = require("node:path");
+  const databasePath = process.env.DATABASE_PATH?.trim();
+  const staffChannelId = process.env.STAFF_CHANNEL_ID?.trim();
+  const productionVolume = process.env.RAILWAY_VOLUME_MOUNT_PATH?.trim();
+  if (!databasePath || !path.isAbsolute(databasePath)) {
+    throw new Error("HOMOLOGATION_MODE exige DATABASE_PATH absoluto e separado.");
+  }
+  if (staffChannelId !== "1557714957007593472") {
+    throw new Error("HOMOLOGATION_MODE exige o canal #painel-staff autorizado.");
+  }
+  if (productionVolume) {
+    const relative = path.relative(path.resolve(productionVolume), path.resolve(databasePath));
+    if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) {
+      throw new Error("HOMOLOGATION_MODE não pode usar o volume SQLite de produção.");
+    }
+  }
+}
+
 const requiredVariables = [
   "DISCORD_TOKEN",
   "CLIENT_ID",

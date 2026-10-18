@@ -359,5 +359,6 @@ async function generateMapVetoImage(options = {}) {
 module.exports = {
   MAP_POOL,
   MAP_IMAGES,
-  generateMapVetoImage
+  generateMapVetoImage,
+  drawText
 };

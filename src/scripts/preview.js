@@ -295,18 +295,15 @@ function separator(container) {
 }
 
 function createContainer(title, subtitle) {
-  const container = new ContainerBuilder()
-    .setAccentColor(PRIMARY);
+  const container = new ContainerBuilder().setAccentColor(PRIMARY);
 
   addText(
     container,
-    "## INVI SIX PRO\n" +
-    `### ${title}\n` +
-    `-# ${subtitle}`
+    "-#  ◈  INVI SIX PRO     /     COMPETITIVE EXPERIENCE\n" +
+    "## " + title + "\n" +
+    "-# " + subtitle
   );
-
   separator(container);
-
   return container;
 }
 
@@ -1238,52 +1235,39 @@ async function buildPanel(session) {
 
     case "result": {
       ensureResult(session);
+      const loser = session.winner === "A" ? "B" : "A";
 
-      container = createContainer(
-        "PARTIDA FINALIZADA",
-        "PARTIDA #482731"
-      );
+      // One native text row per player. No code blocks or tightly packed columns.
+      const addRoster = (team, label, points) => {
+        addText(
+          container,
+          "### " + label + "  ·  " + points + " PTS"
+        );
+        session.teams[team].forEach((id, index) => {
+          const player = PLAYERS.find(p => p.id === id);
+          const captain = session.captains.includes(id) ? "  👑" : "";
+          addText(
+            container,
+            "**" + String(index + 1).padStart(2, "0") +
+            "  ·  " + id + "**" + captain + "\n" +
+            "-# " + (player?.rank || "Sem rank")
+          );
+        });
+      };
 
+      container = new ContainerBuilder().setAccentColor(PRIMARY);
       addText(
         container,
-        `**Mapa:** ${session.selectedMap}\n` +
-        `**Status:** ${
-          session.finished
-            ? "Finalizada"
-            : "Prévia demonstrativa"
-        }\n` +
-        `🏆 **Time ${
-          session.winner
-        } venceu!**`
+        "-# INVI SIX PRO  /  MATCH REPORT\n" +
+        "## Vitória do Time " + session.winner + "\n" +
+        "-# " + session.selectedMap + "  ·  Partida #482731"
       );
-
       separator(container);
-
-      addText(
-        container,
-        "### 🏆 VENCEDORES · +5 PONTOS\n" +
-        list(
-          session.teams[session.winner],
-          session.captains
-        )
-      );
-
+      addRoster(session.winner, "🟢 TIME " + session.winner + "  /  VENCEDORES", "+5");
       separator(container);
-
-      const loser =
-        session.winner === "A"
-          ? "B"
-          : "A";
-
-      addText(
-        container,
-        "### DERROTADOS · -3 PONTOS\n" +
-        list(
-          session.teams[loser],
-          session.captains
-        )
-      );
-
+      addRoster(loser, "🔴 TIME " + loser + "  /  DERROTADOS", "−3");
+      separator(container);
+      addText(container, "-# RESULTADO CONFIRMADO  ·  PRÉVIA COM DADOS FICTÍCIOS");
       break;
     }
 
@@ -1293,36 +1277,21 @@ async function buildPanel(session) {
       );
   }
 
-  // ========================================
-  // CANAL E LIMPEZA SIMULADA
-  // ========================================
-
-  separator(container);
-
-  addText(
-    container,
-    `**Canal desta etapa:** ${
-      stageChannel(session.panel)
-    }\n` +
-    (
-      session.channelEvents.length
-        ? "**Transições simuladas:**\n" +
-          session.channelEvents
-            .slice(-4)
-            .join("\n")
-        : "-# Sem transições ainda."
-    )
-  );
-
-  separator(container);
-
-  addText(
-    container,
-    "-# Ambiente de testes · " +
-    "Nenhum dado real é modificado."
-  );
-
-  components.unshift(container);
+  // The native result panel has its own concise footer.
+  if (session.panel !== "result") {
+    separator(container);
+    addText(
+      container,
+      "-# " + stageChannel(session.panel) +
+      "   /   AMBIENTE DE TESTES   /   DADOS FICTÍCIOS" +
+      (session.channelEvents.length
+        ? "\n-# " + session.channelEvents.slice(-2).join("  ·  ").slice(0, 450)
+        : "")
+    );
+    components.unshift(container);
+  } else {
+    components.unshift(container);
+  }
 
   // ========================================
   // NAVEGAÇÃO
@@ -1393,7 +1362,7 @@ async function createPreviewMessage(
 const command = new SlashCommandBuilder()
   .setName("preview")
   .setDescription(
-    "Simular os painéis do InviSixTational."
+    "Prévia interativa dos painéis INVI SIX PRO V2."
   )
   .setDMPermission(false);
 
