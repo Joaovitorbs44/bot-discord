@@ -1,162 +1,20 @@
-const {
-  EmbedBuilder
-} = require("discord.js");
-
-const db = require(
-  "../database/database"
-);
-
-async function handleProfile(
-  interaction
-) {
-  // ==========================================
-  // JOGADOR CONSULTADO
-  // ==========================================
-
-  const selectedUser =
-    interaction.options.getUser(
-      "jogador"
-    ) || interaction.user;
-
-  // ==========================================
-  // BUSCAR JOGADOR
-  // ==========================================
-
-  const player =
-    db.prepare(`
-      SELECT *
-      FROM players
-      WHERE discord_id = ?
-    `).get(
-      selectedUser.id
-    );
-
-  if (!player) {
-    return interaction.reply({
-      content:
-        "Esse usuário não possui perfil no matchmaking.",
-      ephemeral: true
-    });
-  }
-
-  // ==========================================
-  // POSIÇÃO NO RANKING
-  // ==========================================
-
-  const ranking =
-    db.prepare(`
-      SELECT
-        id,
-        discord_id,
-        points
-      FROM players
-      WHERE is_banned = 0
-      ORDER BY
-        points DESC,
-        wins DESC,
-        matches_played ASC,
-        id ASC
-    `).all();
-
-  const position =
-    ranking.findIndex(
-      (item) =>
-        item.id === player.id
-    );
-
-  const positionText =
-    position >= 0
-      ? `${position + 1}º`
-      : "—";
-
-  // ==========================================
-  // WINRATE
-  // ==========================================
-
-  const matchesPlayed =
-    Number(
-      player.matches_played || 0
-    );
-
-  const wins =
-    Number(
-      player.wins || 0
-    );
-
-  const losses =
-    Number(
-      player.losses || 0
-    );
-
-  const points =
-    Number(
-      player.points || 0
-    );
-
-  const winrate =
-    matchesPlayed > 0
-      ? (
-          (
-            wins /
-            matchesPlayed
-          ) * 100
-        ).toFixed(1)
-      : "0.0";
-
-  // ==========================================
-  // EMBED
-  // ==========================================
-
-  const embed =
-    new EmbedBuilder()
-      .setTitle(
-        player.r6_nickname
-      )
-      .setDescription(
-        `<@${player.discord_id}>\n` +
-        `Rank R6: **${player.r6_rank}**`
-      )
-      .addFields(
-        {
-          name:
-            "Classificação",
-          value:
-            `**Posição:** ${positionText}\n` +
-            `**Pontos:** ${points}`,
-          inline: true
-        },
-        {
-          name:
-            "Estatísticas",
-          value:
-            `**Partidas:** ${matchesPlayed}\n` +
-            `**Vitórias:** ${wins}\n` +
-            `**Derrotas:** ${losses}\n` +
-            `**Winrate:** ${winrate}%`,
-          inline: true
-        }
-      )
-      .setThumbnail(
-        selectedUser.displayAvatarURL({
-          size: 256
-        })
-      )
-      .setFooter({
-        text:
-          "O rank do R6 não muda com os pontos do lobby."
-      })
-      .setTimestamp();
-
-  // ==========================================
-  // RESPOSTA
-  // ==========================================
-
-  await interaction.reply({
-    embeds: [
-      embed
-    ]
-  });
+const {ContainerBuilder,TextDisplayBuilder,SeparatorBuilder,SeparatorSpacingSize,MessageFlags}=require("discord.js");
+const s=require("../services/competitiveStats");
+async function handleProfile(interaction){
+ const user=interaction.options.getUser("jogador")||interaction.user,player=s.getPlayer(user.id);
+ if(!player)return interaction.reply({content:"Esse usuário não possui perfil no matchmaking.",flags:MessageFlags.Ephemeral});
+ const season=s.activeSeason(),st=s.seasonStats(player.id,season?.id),pos=s.position(player.id,season?.id);
+ const recent=s.matches(user.id,5,season?.id).map(m=>{
+  const label=m.status==="finished"?(m.winner_team===m.team?"🟢 VITÓRIA":"🔴 DERROTA"):({playing:"🔵 EM JOGO",disputed:"🟠 DISPUTA",cancelled:"⚪ CANCELADA",pending_confirmation:"🟡 PENDENTE"}[m.status]||"—");
+  return "**"+s.safe(m.match_code)+"** · "+s.safe(m.map)+" · "+label;
+ }).join("\n")||"Nenhuma partida nesta temporada.";
+ const panel=new ContainerBuilder().setAccentColor(0xFF3D2C)
+ .addTextDisplayComponents(new TextDisplayBuilder().setContent("## INVI SIX PRO\n-# PERFIL COMPETITIVO  /  "+s.safe(season?.name||"SEM TEMPORADA ATIVA")))
+ .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+ .addTextDisplayComponents(new TextDisplayBuilder().setContent("### "+s.safe(player.r6_nickname)+"\n<@"+player.discord_id+"> · Rank R6: **"+s.safe(player.r6_rank)+"**\n\n### "+st.points+" PTS  ·  "+(pos?"#"+pos:"—")+" NO RANKING\n**"+st.wins+"** vitórias  /  **"+st.losses+"** derrotas  /  **"+st.matches_played+"** partidas\n**"+s.winRate(st.wins,st.matches_played)+"%** win rate  ·  **"+s.streak(user.id,season?.id)+"** sequência"))
+ .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+ .addTextDisplayComponents(new TextDisplayBuilder().setContent("### ÚLTIMAS PARTIDAS\n"+recent))
+ .addTextDisplayComponents(new TextDisplayBuilder().setContent("-# O rank oficial do R6 não muda com a pontuação do lobby."));
+ return interaction.reply({components:[panel],flags:MessageFlags.IsComponentsV2,allowedMentions:{parse:[]}});
 }
-
-module.exports =
-  handleProfile;
+module.exports=handleProfile;
