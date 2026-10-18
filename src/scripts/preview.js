@@ -17,7 +17,6 @@ const {
 } = require("discord.js");
 
 const config = require("../config/config");
-const { renderMatchResult } = require("../ui/matchResultImage");
 const {
   MAP_POOL,
   generateMapVetoImage
@@ -1237,32 +1236,45 @@ async function buildPanel(session) {
     case "result": {
       ensureResult(session);
       const loser = session.winner === "A" ? "B" : "A";
-      const formatPlayers = ids => ids.map(id => ({
-        name: id,
-        rank: PLAYERS.find(p => p.id === id)?.rank || "—",
-        captain: session.captains.includes(id)
-      }));
-      const buffer = await renderMatchResult({
-        matchCode: "482731",
-        map: session.selectedMap,
-        winner: session.winner,
-        winners: formatPlayers(session.teams[session.winner]),
-        losers: formatPlayers(session.teams[loser])
-      });
-      const filename = "invi-six-pro-v2-result.png";
-      files.push(new AttachmentBuilder(buffer, { name: filename }));
-      // Render the image as a top-level gallery, outside Discord's container.
-      // Preserve accessible result text without duplicating the entire scoreboard.
-      components.push(
-        new MediaGalleryBuilder().addItems(
-          new MediaGalleryItemBuilder()
-            .setURL("attachment://" + filename)
-            .setDescription(
-              "Resultado da partida: Time " + session.winner +
-              " venceu em " + session.selectedMap +
-              ". Vencedores recebem 5 pontos e derrotados perdem 3 pontos."
-            )
-        )
+      const playerLine = (id, index) => {
+        const player = PLAYERS.find(p => p.id === id);
+        const captain = session.captains.includes(id) ? "  👑" : "";
+        return String(index + 1).padStart(2, "0") + "  " +
+          id.padEnd(11, " ") + "  " +
+          (player?.rank || "—") + captain;
+      };
+      const winners = session.teams[session.winner]
+        .map(playerLine).join("\n");
+      const losers = session.teams[loser]
+        .map(playerLine).join("\n");
+
+      container = new ContainerBuilder()
+        .setAccentColor(PRIMARY);
+      addText(
+        container,
+        "## INVI SIX PRO\n" +
+        "-# MATCH REPORT  /  TEMPORADA 01\n\n" +
+        "### PARTIDA FINALIZADA\n" +
+        "**Mapa:** " + session.selectedMap +
+        "  ·  **Partida:** #482731\n" +
+        "**Vencedor:** Time " + session.winner
+      );
+      separator(container);
+      addText(
+        container,
+        "### 🟢 VENCEDORES  /  +5 PTS\n" +
+        "\`\`\`text\n" + winners + "\n\`\`\`"
+      );
+      separator(container);
+      addText(
+        container,
+        "### 🔴 DERROTADOS  /  −3 PTS\n" +
+        "\`\`\`text\n" + losers + "\n\`\`\`"
+      );
+      separator(container);
+      addText(
+        container,
+        "-# RESULTADO CONFIRMADO  ·  AMBIENTE DE TESTES  ·  DADOS FICTÍCIOS"
       );
       break;
     }
@@ -1273,8 +1285,7 @@ async function buildPanel(session) {
       );
   }
 
-  // Keep the old containers for all other preview stages.
-  // The graphical result deliberately has no outer container or duplicate footer.
+  // The native result panel has its own concise footer.
   if (session.panel !== "result") {
     separator(container);
     addText(
@@ -1285,6 +1296,8 @@ async function buildPanel(session) {
         ? "\n-# " + session.channelEvents.slice(-2).join("  ·  ").slice(0, 450)
         : "")
     );
+    components.unshift(container);
+  } else {
     components.unshift(container);
   }
 
