@@ -29,6 +29,7 @@ const { handleSessionComponent } = require("../services/matchmakingInteractionRo
 const readyCheckPanels = require("../services/readyCheckPanels");
 const captainVotePanels = require("../services/captainVotePanels");
 const draftPanels = require("../services/draftPanels");
+const mapVetoPanels = require("../services/mapVetoPanels");
 const handleSolicitacoes = require("../scripts/solicitacoes");
 
 // ==========================================
@@ -305,6 +306,7 @@ async function initializeMatchmaking(readyClient) {
       await readyCheckPanels.recover(readyClient, config.discord.guildId);
       await captainVotePanels.recover(readyClient, config.discord.guildId);
       await draftPanels.recover(readyClient, config.discord.guildId);
+      await mapVetoPanels.recover(readyClient, config.discord.guildId);
     }
 
     matchmakingInitialized = true;
