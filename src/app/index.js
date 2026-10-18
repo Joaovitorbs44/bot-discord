@@ -26,6 +26,7 @@ const handleRanking = require("../scripts/ranking");
 const { handleRankingPage } = require("../scripts/ranking");
 const { enforceChannel } = require("../scripts/channelGuard");
 const { handleSessionComponent } = require("../services/matchmakingInteractionRouter");
+const readyCheckPanels = require("../services/readyCheckPanels");
 const handleSolicitacoes = require("../scripts/solicitacoes");
 
 // ==========================================
@@ -296,6 +297,10 @@ async function initializeMatchmaking(readyClient) {
       await restoreMatchPublications(readyClient);
     } catch (error) {
       console.error("Erro ao recuperar publicações de partidas:", error);
+    }
+
+    if (process.env.MULTILOBBY_RECOVERY_ENABLED === "true") {
+      await readyCheckPanels.recover(readyClient, config.discord.guildId);
     }
 
     matchmakingInitialized = true;
