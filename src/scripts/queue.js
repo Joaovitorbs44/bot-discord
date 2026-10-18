@@ -22,7 +22,7 @@ const COLORS = {
   neutral: 0x2B2D35
 };
 
-const PANEL_MARKER = "INVISIX PRO • MATCHMAKING";
+const PANEL_MARKER = "INVI SIX PRO • MATCHMAKING";
 
 function safeText(value, fallback = "Não informado") {
   return String(value || fallback)

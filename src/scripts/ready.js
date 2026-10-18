@@ -153,7 +153,7 @@ function panel(status = "active") {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "## INVISIXTATIONAL\n" +
+        "## INVI SIX PRO\n" +
         "### READY CHECK · MATCHMAKING 5V5"
       )
     )

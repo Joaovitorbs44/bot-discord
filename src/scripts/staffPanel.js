@@ -1,6 +1,10 @@
 
 const {
   EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -383,6 +387,32 @@ function createSystemEmbed(client) {
     .setTimestamp();
 }
 
+// Premium Glass: converte as visualizações existentes sem alterar suas consultas ou permissões.
+function createGlassPanel(view, client) {
+  const embed = createPanel(view, client).toJSON();
+  const parts = [
+    "## INVI SIX PRO",
+    "-# CENTRAL DA STAFF  /  " + String(embed.title || "VISÃO GERAL").replace(/^.*?Staff\s*[•·]\s*/i, "").toUpperCase()
+  ];
+  const container = new ContainerBuilder()
+    .setAccentColor(0xFF3D2C)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(parts.join("\n")))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+  if (embed.description) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(embed.description.slice(0, 3800)));
+  }
+  const fields = embed.fields || [];
+  if (fields.length) {
+    const lines = fields.map(field => "**" + field.name + "**\n" + field.value);
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n\n").slice(0, 3800)));
+  }
+  if (embed.footer?.text) {
+    container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent("-# " + embed.footer.text));
+  }
+  return container;
+}
+
 function createPanel(view, client) {
   switch (view) {
     case "queue":
@@ -411,9 +441,9 @@ async function handleStaffPanel(interaction) {
   }
 
   return interaction.reply({
-    embeds: [createPanel("home", interaction.client)],
-    components: createButtons(),
-    flags: MessageFlags.Ephemeral
+    components: [createGlassPanel("home", interaction.client), ...createButtons()],
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] }
   });
 }
 
@@ -444,13 +474,9 @@ async function handleStaffPanelButton(interaction) {
   }
 
   return interaction.update({
-    embeds: [
-      createPanel(
-        view === "refresh" ? "home" : view,
-        interaction.client
-      )
-    ],
-    components: createButtons()
+    components: [createGlassPanel(view === "refresh" ? "home" : view, interaction.client), ...createButtons()],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] }
   });
 }
 

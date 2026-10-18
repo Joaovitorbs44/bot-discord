@@ -300,7 +300,7 @@ function createContainer(title, subtitle) {
 
   addText(
     container,
-    "## INVISIXTATIONAL\n" +
+    "## INVI SIX PRO\n" +
     `### ${title}\n` +
     `-# ${subtitle}`
   );

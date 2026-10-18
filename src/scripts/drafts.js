@@ -274,7 +274,7 @@ function createDraftPanel() {
     .setAccentColor(COLORS.primary)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "## INVISIX PRO\n" +
+        "## INVI SIX PRO\n" +
         "### DRAFT DE JOGADORES · 5V5"
       )
     )
@@ -390,7 +390,7 @@ function createFinishedDraftPanel() {
     .setAccentColor(COLORS.success)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "## INVISIXTATIONAL\n" +
+        "## INVI SIX PRO\n" +
         "### TIMES DEFINIDOS · 5V5"
       )
     )
