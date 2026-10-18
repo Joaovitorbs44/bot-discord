@@ -23,6 +23,8 @@ const handleApprove = require("../scripts/approve");
 const handleReject = require("../scripts/reject");
 const handleProfile = require("../scripts/profile");
 const handleRanking = require("../scripts/ranking");
+const { handleRankingPage } = require("../scripts/ranking");
+const { enforceChannel } = require("../scripts/channelGuard");
 const handleSolicitacoes = require("../scripts/solicitacoes");
 
 // ==========================================
@@ -335,6 +337,9 @@ client.on(
   Events.InteractionCreate,
   async interaction => {
     try {
+      if (await enforceChannel(interaction)) return;
+      if (interaction.isButton() && interaction.customId.startsWith("ranking_page:")) return handleRankingPage(interaction);
+
       // ======================================
       // PREVIEW - NAVEGAÇÃO
       // ======================================
