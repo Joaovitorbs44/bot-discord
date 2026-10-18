@@ -1251,16 +1251,18 @@ async function buildPanel(session) {
       });
       const filename = "invi-six-pro-v2-result.png";
       files.push(new AttachmentBuilder(buffer, { name: filename }));
-      container = new ContainerBuilder().setAccentColor(PRIMARY);
-      container.addMediaGalleryComponents(
+      // Render the image as a top-level gallery, outside Discord's container.
+      // Preserve accessible result text without duplicating the entire scoreboard.
+      components.push(
         new MediaGalleryBuilder().addItems(
-          new MediaGalleryItemBuilder().setURL("attachment://" + filename)
+          new MediaGalleryItemBuilder()
+            .setURL("attachment://" + filename)
+            .setDescription(
+              "Resultado da partida: Time " + session.winner +
+              " venceu em " + session.selectedMap +
+              ". Vencedores recebem 5 pontos e derrotados perdem 3 pontos."
+            )
         )
-      );
-      addText(container,
-        "-# INVI SIX PRO  /  PREMIUM GLASS V2\n" +
-        "**Time " + session.winner + " venceu** · " + session.selectedMap +
-        "\n-# Vencedores +5 pts  ·  Derrotados −3 pts"
       );
       break;
     }
@@ -1271,19 +1273,20 @@ async function buildPanel(session) {
       );
   }
 
-  // Rodapé compacto: mantém as informações de transição acessíveis,
-  // sem competir com o conteúdo principal do painel.
-  separator(container);
-  addText(
-    container,
-    "-# " + stageChannel(session.panel) +
-    "   /   AMBIENTE DE TESTES   /   DADOS FICTÍCIOS" +
-    (session.channelEvents.length
-      ? "\n-# " + session.channelEvents.slice(-2).join("  ·  ").slice(0, 450)
-      : "")
-  );
-
-  components.unshift(container);
+  // Keep the old containers for all other preview stages.
+  // The graphical result deliberately has no outer container or duplicate footer.
+  if (session.panel !== "result") {
+    separator(container);
+    addText(
+      container,
+      "-# " + stageChannel(session.panel) +
+      "   /   AMBIENTE DE TESTES   /   DADOS FICTÍCIOS" +
+      (session.channelEvents.length
+        ? "\n-# " + session.channelEvents.slice(-2).join("  ·  ").slice(0, 450)
+        : "")
+    );
+    components.unshift(container);
+  }
 
   // ========================================
   // NAVEGAÇÃO
