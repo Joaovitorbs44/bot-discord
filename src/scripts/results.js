@@ -1,3 +1,4 @@
+const { matchTeam } = require("../services/teamLabels");
 
 const {
   ContainerBuilder,
@@ -242,7 +243,7 @@ function createFinishedMatchPanel(
     code: match.match_code,
     title: "PARTIDA FINALIZADA",
     description:
-      `🏆 **Time ${result.winnerTeam} venceu!**\n` +
+      `🏆 **${matchTeam(db,match,result.winnerTeam)} venceu!**\n` +
       `**Mapa:** ${safeText(match.map)}\n` +
       "**Status:** Finalizada",
     sections,
@@ -529,13 +530,13 @@ async function handleResultReport(interaction) {
   const buttons = createButtons([
     {
       id: `result_winner:${match.match_code}:A`,
-      label: "Time A venceu",
+      label: `${matchTeam(db,match,"A",true)} venceu`,
       emoji: "🏆",
       style: ButtonStyle.Primary
     },
     {
       id: `result_winner:${match.match_code}:B`,
-      label: "Time B venceu",
+      label: `${matchTeam(db,match,"B",true)} venceu`,
       emoji: "🏆",
       style: ButtonStyle.Secondary
     }
@@ -643,7 +644,7 @@ async function handleWinnerSelection(interaction) {
       code,
       title: "RESULTADO ENVIADO",
       description:
-        `Você informou que o **Time ${winner}** venceu.\n\n` +
+        `Você informou que o **${matchTeam(db,match,winner)}** venceu.\n\n` +
         "Aguardando confirmação do outro capitão.",
       color: COLORS.success,
       ephemeral: true
@@ -681,7 +682,7 @@ async function handleWinnerSelection(interaction) {
       title: "CONFIRMAÇÃO DE RESULTADO",
       description:
         `<@${interaction.user.id}> informou que o ` +
-        `**Time ${winner}** venceu.\n\n` +
+        `**${matchTeam(db,match,winner)}** venceu.\n\n` +
         `<@${otherCaptain}>, confirme ou conteste.`,
       sections: [
         {
@@ -690,7 +691,7 @@ async function handleWinnerSelection(interaction) {
         },
         {
           title: "RESULTADO INFORMADO",
-          value: `Time ${winner}`
+          value: `${matchTeam(db,match,winner)}`
         }
       ],
       footer:
@@ -859,13 +860,13 @@ async function sendDisputeToStaff(interaction, match) {
     const buttons = createButtons([
       {
         id: `staff_result:${match.match_code}:A`,
-        label: "Time A venceu",
+        label: `${matchTeam(db,match,"A",true)} venceu`,
         emoji: "🏆",
         style: ButtonStyle.Primary
       },
       {
         id: `staff_result:${match.match_code}:B`,
-        label: "Time B venceu",
+        label: `${matchTeam(db,match,"B",true)} venceu`,
         emoji: "🏆",
         style: ButtonStyle.Secondary
       },
@@ -886,7 +887,7 @@ async function sendDisputeToStaff(interaction, match) {
         sections: [
           {
             title: "RESULTADO INFORMADO",
-            value: `Time ${match.winner_team || "—"}`
+            value: `${matchTeam(db,match,match.winner_team)}`
           },
           {
             title: "INFORMADO POR",
@@ -1166,3 +1167,4 @@ module.exports = {
   applyMatchResult,
   cancelMatch
 };
+

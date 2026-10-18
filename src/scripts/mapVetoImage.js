@@ -229,10 +229,10 @@ function createOverlay(map, ban, selected) {
       : "DISPONIVEL";
 
   const teamValue =
-    ban?.captainTeam || ban?.team || null;
+    ban?.captainName || null;
 
   const team = banned && teamValue
-    ? ` - TIME ${String(teamValue).replace(/[^A-Za-z0-9]/g, "")}`
+    ? ` - ${String(teamValue).replace(/[^A-Za-z0-9 ._-]/g, "").slice(0,18)}`
     : "";
 
   const darkOverlay = banned
@@ -362,3 +362,4 @@ module.exports = {
   generateMapVetoImage,
   drawText
 };
+

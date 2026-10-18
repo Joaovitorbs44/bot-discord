@@ -1,3 +1,4 @@
+const { captainTeam } = require("../services/teamLabels");
 
 const {
   ContainerBuilder,
@@ -303,7 +304,7 @@ function createSideChoicePanel() {
       new TextDisplayBuilder().setContent(
         `**Mapa:** ${safeText(selectedMap)}\n` +
         `**Quem escolhe:** <@${captainA.discordId}>\n\n` +
-        "O capitão do Time A define o lado inicial."
+        `O capitão do ${teamName("A")} define o lado inicial.`
       )
     )
     .addSeparatorComponents(
@@ -315,7 +316,7 @@ function createSideChoicePanel() {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "### 🔴 TIME A\n" +
+        `### 🔴 ${teamName("A")}\n` +
         createTeamList(teamA, captainA)
       )
     )
@@ -328,7 +329,7 @@ function createSideChoicePanel() {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "### 🔵 TIME B\n" +
+        `### 🔵 ${teamName("B")}\n` +
         createTeamList(teamB, captainB)
       )
     )
@@ -341,7 +342,7 @@ function createSideChoicePanel() {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# O Time B receberá automaticamente " +
+        `-# O ${teamName("B")} receberá automaticamente ` +
         "o lado oposto."
       )
     );
@@ -408,7 +409,7 @@ function createCompletedPanel() {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `### 🔴 TIME A · ${safeText(sideA)}\n` +
+        `### 🔴 ${teamName("A")} · ${safeText(sideA)}\n` +
         createTeamList(teamA, captainA)
       )
     )
@@ -421,7 +422,7 @@ function createCompletedPanel() {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `### 🔵 TIME B · ${safeText(sideB)}\n` +
+        `### 🔵 ${teamName("B")} · ${safeText(sideB)}\n` +
         createTeamList(teamB, captainB)
       )
     );
@@ -1003,3 +1004,6 @@ module.exports = {
   isSideChoiceActive,
   getMatchSetup
 };
+
+
+function teamName(team) { return captainTeam(team === "A" ? captainA : captainB, db); }

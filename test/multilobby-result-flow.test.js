@@ -59,7 +59,14 @@ test("Discord captain confirmation, dispute, staff decision and duplicate clicks
    await handleResultInteraction(interaction);
    return actions;
   }
-  assert.equal((await press("result_report:#TEST1","p1-0"))[0].kind,"reply");
+  const report = (await press("result_report:#TEST1","p1-0"))[0];
+  assert.equal(report.kind,"reply");
+  const labels=JSON.stringify(report.payload);
+  assert.match(labels,/Time p1-0 venceu/);
+  assert.match(labels,/Time p1-5 venceu/);
+  assert.match(labels,/result_winner:#TEST1:A/);
+  assert.match(labels,/result_winner:#TEST1:B/);
+  assert.doesNotMatch(labels,/Time A venceu|Time B venceu/);
   assert.equal((await press("result_winner:#TEST1:A","p1-0"))[0].kind,"update");
   assert.equal(publicMessages.length,1);
   assert.equal(db.prepare("SELECT status FROM matches WHERE id=1").get().status,"pending_confirmation");
@@ -86,3 +93,4 @@ test("Discord captain confirmation, dispute, staff decision and duplicate clicks
   db.close();
  }
 });
+

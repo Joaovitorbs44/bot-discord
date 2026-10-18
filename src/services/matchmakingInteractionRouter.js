@@ -1,3 +1,5 @@
+const db = require("../database/database");
+const { matchTeam } = require("./teamLabels");
 // Router for session-scoped Discord interactions. Legacy controls remain unchanged.
 // Stage-specific handlers can be registered incrementally without enabling
 // multi-lobby queue handoff or removing the legacy database constraint.
@@ -141,10 +143,10 @@ async function handleSessionComponent(interaction) {
     if (!result.ok) {
       await reject(interaction,result.reason === "already_chosen"
         ? "Os lados já foram escolhidos. A criação da partida está pendente de recuperação."
-        : "Escolha inválida ou você não é o capitão A.");
+        : "Escolha inválida ou você não é o capitão responsável.");
       return true;
     }
-    await reject(interaction,`Lados registrados: Time A — ${result.sideA}; Time B — ${result.sideB}. Criando partida...`);
+    await reject(interaction,`Lados registrados: ${matchTeam(db,authorized.session,"A")} — ${result.sideA}; ${matchTeam(db,authorized.session,"B")} — ${result.sideB}. Criando partida...`);
     try {
       await matchCreation.createAndPublish(interaction.client,parsed.sessionId);
     } catch (error) {

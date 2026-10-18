@@ -1,3 +1,4 @@
+const { captainTeam } = require("../services/teamLabels");
 
 const {
   SlashCommandBuilder,
@@ -540,6 +541,7 @@ function ensureResult(session) {
 // ==========================================
 
 async function buildPanel(session) {
+  const teamName = team => captainTeam(session.captains[team === "A" ? 0 : 1]);
   const components = [];
   const files = [];
 
@@ -784,7 +786,7 @@ async function buildPanel(session) {
                 session.captains[
                   round.captain === "A" ? 0 : 1
                 ]
-              } · Time ${round.captain}`
+              } · ${teamName(round.captain)}`
             : "Draft finalizado"
         }\n` +
         `**Escolhas:** ${
@@ -797,7 +799,7 @@ async function buildPanel(session) {
 
       addText(
         container,
-        `### 🔴 TIME A · ${
+        `### 🔴 ${teamName("A")} · ${
           session.teams.A.length
         }/5\n` +
         list(
@@ -810,7 +812,7 @@ async function buildPanel(session) {
 
       addText(
         container,
-        `### 🔵 TIME B · ${
+        `### 🔵 ${teamName("B")} · ${
           session.teams.B.length
         }/5\n` +
         list(
@@ -824,10 +826,10 @@ async function buildPanel(session) {
       addText(
         container,
         "### FORÇA ESTIMADA\n" +
-        `**Time A:** ${
+        `**${teamName("A")}:** ${
           teamStrength(session.teams.A)
         }\n` +
-        `**Time B:** ${
+        `**${teamName("B")}:** ${
           teamStrength(session.teams.B)
         }\n` +
         `**Diferença:** ${
@@ -902,11 +904,7 @@ async function buildPanel(session) {
         `**Banimentos:** ${
           session.bans.length
         }/${MAP_POOL.length - 1}\n` +
-        `**Vez:** Time ${
-          session.bans.length % 2
-            ? "B"
-            : "A"
-        }\n` +
+        `**Vez:** ${teamName(session.bans.length % 2 ? "B" : "A")}\n` +
         `**Mapa escolhido:** ${
           session.selectedMap ||
           "A definir"
@@ -924,7 +922,7 @@ async function buildPanel(session) {
       const imageName = "map-veto-preview.png";
 
       const image = await generateMapVetoImage({
-        bannedMaps: session.bans,
+        bannedMaps: session.bans.map(ban => ({...ban,captainName:teamName(ban.captainTeam)})),
         selectedMap: session.selectedMap
       });
 
@@ -965,7 +963,7 @@ async function buildPanel(session) {
         (
           session.bans.map((ban, i) =>
             `${i + 1}. ❌ ${ban.map} · ` +
-            `Time ${ban.captainTeam}`
+            `${teamName(ban.captainTeam)}`
           ).join("\n") ||
           "-# Sem banimentos"
         )
@@ -1020,7 +1018,7 @@ async function buildPanel(session) {
       addText(
         container,
         `**Mapa:** ${session.selectedMap}\n` +
-        `**Time A:** ${
+        `**${teamName("A")}:** ${
           session.side === "attack"
             ? "Ataque"
             : session.side === "defense"
@@ -1033,7 +1031,7 @@ async function buildPanel(session) {
 
       addText(
         container,
-        "### 🔴 TIME A\n" +
+        `### 🔴 ${teamName("A")}\n` +
         list(
           session.teams.A,
           session.captains
@@ -1044,7 +1042,7 @@ async function buildPanel(session) {
 
       addText(
         container,
-        "### 🔵 TIME B\n" +
+        `### 🔵 ${teamName("B")}\n` +
         list(
           session.teams.B,
           session.captains
@@ -1107,7 +1105,7 @@ async function buildPanel(session) {
 
       addText(
         container,
-        "### 🔴 TIME A · " +
+        `### 🔴 ${teamName("A")} · ` +
         (
           session.side === "defense"
             ? "DEFESA"
@@ -1124,7 +1122,7 @@ async function buildPanel(session) {
 
       addText(
         container,
-        "### 🔵 TIME B · " +
+        `### 🔵 ${teamName("B")} · ` +
         (
           session.side === "defense"
             ? "ATAQUE"
@@ -1141,12 +1139,12 @@ async function buildPanel(session) {
         row(
           button(
             "winner_A",
-            "Vitória Time A",
+            `Vitória ${teamName("A")}`,
             ButtonStyle.Danger
           ),
           button(
             "winner_B",
-            "Vitória Time B",
+            `Vitória ${teamName("B")}`,
             ButtonStyle.Primary
           )
         )
@@ -1170,9 +1168,7 @@ async function buildPanel(session) {
       addText(
         container,
         `**Mapa:** ${session.selectedMap}\n` +
-        `**Vencedor informado:** Time ${
-          session.winner
-        }\n` +
+        `**Vencedor informado:** ${teamName(session.winner)}\n` +
         `**Status:** ${
           session.disputed
             ? "⚠️ Contestado"
@@ -1209,12 +1205,12 @@ async function buildPanel(session) {
           row(
             button(
               "staff_A",
-              "Staff: Time A",
+              `Staff: ${teamName("A")}`,
               ButtonStyle.Danger
             ),
             button(
               "staff_B",
-              "Staff: Time B",
+              `Staff: ${teamName("B")}`,
               ButtonStyle.Primary
             ),
             button(
@@ -1259,13 +1255,13 @@ async function buildPanel(session) {
       addText(
         container,
         "-# INVI SIX PRO  /  MATCH REPORT\n" +
-        "## Vitória do Time " + session.winner + "\n" +
+        "## Vitória do " + teamName(session.winner) + "\n" +
         "-# " + session.selectedMap + "  ·  Partida #482731"
       );
       separator(container);
-      addRoster(session.winner, "🟢 TIME " + session.winner + "  /  VENCEDORES", "+5");
+      addRoster(session.winner, "🟢 " + teamName(session.winner) + "  /  VENCEDORES", "+5");
       separator(container);
-      addRoster(loser, "🔴 TIME " + loser + "  /  DERROTADOS", "−3");
+      addRoster(loser, "🔴 " + teamName(loser) + "  /  DERROTADOS", "−3");
       separator(container);
       addText(container, "-# RESULTADO CONFIRMADO  ·  PRÉVIA COM DADOS FICTÍCIOS");
       break;
@@ -1710,3 +1706,4 @@ module.exports = {
   handlePreviewAction,
   createPreviewMessage
 };
+

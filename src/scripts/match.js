@@ -1,3 +1,4 @@
+const { captainTeam } = require("../services/teamLabels");
 const { cleanup } = require("../services/panelLifecycle");
 
 const {
@@ -182,7 +183,7 @@ function createMatchPanel(match, data, season) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `### 🟠 TIME A · ${sideIcon(data.sideA)} ${data.sideA}\n` +
+        `### 🟠 ${captainTeam(data.captainA,db)} · ${sideIcon(data.sideA)} ${data.sideA}\n` +
         createTeamList(
           data.teamA,
           data.captainA
@@ -196,7 +197,7 @@ function createMatchPanel(match, data, season) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `### 🔵 TIME B · ${sideIcon(data.sideB)} ${data.sideB}\n` +
+        `### 🔵 ${captainTeam(data.captainB,db)} · ${sideIcon(data.sideB)} ${data.sideB}\n` +
         createTeamList(
           data.teamB,
           data.captainB

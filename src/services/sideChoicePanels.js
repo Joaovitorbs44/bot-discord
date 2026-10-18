@@ -1,3 +1,5 @@
+const db = require("../database/database");
+const { matchTeam } = require("./teamLabels");
 const { cleanup } = require("./panelLifecycle");
 const {ContainerBuilder,TextDisplayBuilder,ActionRowBuilder,ButtonBuilder,ButtonStyle,MessageFlags}=require("discord.js");
 const sessions=require("./matchmakingSessions");
@@ -8,7 +10,7 @@ function render(id){
  const state=sessions.parseState(session);
  const container=new ContainerBuilder().setAccentColor(0xFF3D2C)
   .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-   `## Lobby #${id} · Escolha de lados\n**Mapa:** ${state.selectedMap||"Não definido"}\n**Capitão A:** <@${session.captain_a_discord_id}>\nEscolha o lado inicial do Time A.`
+   `## Lobby #${id} · Escolha de lados\n**Mapa:** ${state.selectedMap||"Não definido"}\n**Capitão:** <@${session.captain_a_discord_id}>\nEscolha o lado inicial do ${matchTeam(db,session,"A")}.`
   ))
   .addActionRowComponents(new ActionRowBuilder().addComponents(
    new ButtonBuilder().setCustomId(sessions.componentId("side_choice",id,"attack")).setLabel("Ataque").setStyle(ButtonStyle.Danger),

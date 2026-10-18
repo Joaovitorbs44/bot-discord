@@ -1,3 +1,4 @@
+const { captainTeam } = require("../services/teamLabels");
 const { removeMessage } = require("../services/panelLifecycle");
 
 const {
@@ -207,8 +208,8 @@ function createVotePanel(finished = false) {
   const description = finished
     ? (
       "### Capitães eleitos\n" +
-      `**Time A:** <@${captainA.discordId}>\n` +
-      `**Time B:** <@${captainB.discordId}>\n\n` +
+      `**${captainTeam(captainA,db)}:** <@${captainA.discordId}>\n` +
+      `**${captainTeam(captainB,db)}:** <@${captainB.discordId}>\n\n` +
       "-# O draft de jogadores será iniciado."
     )
     : (

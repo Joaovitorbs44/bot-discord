@@ -1,3 +1,4 @@
+const { matchTeam } = require("../services/teamLabels");
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, EmbedBuilder, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -93,11 +94,12 @@ async function sendScoreboard(i) {
 }
 function view(report) {
   const players=store.roster(report.match_id),rows=JSON.parse(report.rows_json);
+  const match=store.match(report.match_code);
   const embed=new EmbedBuilder().setColor(0xFF3D2C).setTitle(`Placar ${report.match_code} · ${report.map}`)
     .setDescription(`**Status:** ${report.status}\nConfira os 10 jogadores e a imagem antes de aprovar.\n${report.ocr_note||"Dados sugeridos pelo OCR; exigem revisão."}`)
     .addFields(players.map(p=>{
       const row=rows.find(r=>r.discordId===p.discord_id);
-      return {name:`${p.team} · ${p.r6_nickname}`.slice(0,100),value:row?.kills===null||row?.deaths===null||!row?"⚠️ Preenchimento necessário":`${row.kills} kills / ${row.deaths} mortes · K/D ${row.deaths?(row.kills/row.deaths).toFixed(2):(row.kills?"∞":"0.00")}`,inline:true};
+      return {name:`${matchTeam(db,match,p.team,true)} · ${p.r6_nickname}`.slice(0,100),value:row?.kills===null||row?.deaths===null||!row?"⚠️ Preenchimento necessário":`${row.kills} kills / ${row.deaths} mortes · K/D ${row.deaths?(row.kills/row.deaths).toFixed(2):(row.kills?"∞":"0.00")}`,inline:true};
     })).setImage("attachment://placar.png");
   const components=[];
   if(report.status==="pending") {

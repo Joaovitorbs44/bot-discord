@@ -1,3 +1,4 @@
+const { captainTeam } = require("../services/teamLabels");
 const { removeMessage } = require("../services/panelLifecycle");
 
 const {
@@ -124,8 +125,8 @@ function strengthText() {
     : "0.0";
 
   return (
-    `**Time A:** ${averageA}\n` +
-    `**Time B:** ${averageB}\n` +
+    `**${teamName("A")}:** ${averageA}\n` +
+    `**${teamName("B")}:** ${averageB}\n` +
     "-# Média ilustrativa baseada nos ranks. " +
     "Não representa o MMR oficial do Rainbow Six."
   );
@@ -299,7 +300,7 @@ function createDraftPanel() {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `### Time A · ${teamA.length}/${config.matchmaking.teamSize}\n` +
+        `### ${teamName("A")} · ${teamA.length}/${config.matchmaking.teamSize}\n` +
         createPlayerList(teamA, captainA)
       )
     )
@@ -310,7 +311,7 @@ function createDraftPanel() {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `### Time B · ${teamB.length}/${config.matchmaking.teamSize}\n` +
+        `### ${teamName("B")} · ${teamB.length}/${config.matchmaking.teamSize}\n` +
         createPlayerList(teamB, captainB)
       )
     )
@@ -413,7 +414,7 @@ function createFinishedDraftPanel() {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "### Time A\n" +
+        `### ${teamName("A")}\n` +
         createPlayerList(teamA, captainA)
       )
     )
@@ -424,7 +425,7 @@ function createFinishedDraftPanel() {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "### Time B\n" +
+        `### ${teamName("B")}\n` +
         createPlayerList(teamB, captainB)
       )
     )
@@ -1049,3 +1050,5 @@ module.exports = {
   getTeams
 };
 
+
+function teamName(team) { return captainTeam(team === "A" ? captainA : captainB, db); }

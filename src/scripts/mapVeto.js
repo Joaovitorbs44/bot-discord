@@ -1,3 +1,4 @@
+const { captainTeam } = require("../services/teamLabels");
 const { cleanup } = require("../services/panelLifecycle");
 
 const {
@@ -171,7 +172,7 @@ function saveMapVetoState() {
 
 async function createMapImage() {
   const buffer = await generateMapVetoImage({
-    bannedMaps,
+    bannedMaps: bannedMaps.map(ban => ({...ban,captainName:captainTeam(ban.captainTeam === "A" ? captainA : captainB,db,true)})),
     selectedMap
   });
 
@@ -220,8 +221,7 @@ async function createMapVetoPanel() {
   const bannedList = bannedMaps.length
     ? bannedMaps.map((ban, index) =>
         `**${index + 1}.** ❌ ` +
-        `${safeText(ban.map)} · Time ` +
-        `${ban.captainTeam}` +
+        `${safeText(ban.map)} · ${teamName(ban.captainTeam)}` +
         (ban.automatic ? " *(automático)*" : "")
       ).join("\n")
     : "Nenhum mapa banido.";
@@ -251,7 +251,7 @@ async function createMapVetoPanel() {
       MAP_POOL.length - 1
     )}/${MAP_POOL.length - 1}\n` +
     `**Vez de banir:** <@${captain.discordId}>\n` +
-    `**Time:** ${currentCaptain}\n` +
+    `**Time:** ${teamName(currentCaptain)}\n` +
     `**Tempo restante:** ${deadline}\n` +
     `**Mapas disponíveis:** ${availableMaps.length}`
   );
@@ -319,7 +319,7 @@ async function createFinishedMapVetoPanel() {
   const bannedList = bannedMaps.length
     ? bannedMaps.map((ban, index) =>
         `**${index + 1}.** ${safeText(ban.map)} · ` +
-        `Time ${ban.captainTeam}` +
+        `${teamName(ban.captainTeam)}` +
         (ban.automatic ? " *(automático)*" : "")
       ).join("\n")
     : "Nenhum.";
@@ -998,3 +998,5 @@ module.exports = {
   getVetoData
 };
 
+
+function teamName(team) { return captainTeam(team === "A" ? captainA : captainB, db); }

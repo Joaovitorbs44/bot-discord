@@ -1,3 +1,5 @@
+const db = require("../database/database");
+const { matchTeam } = require("./teamLabels");
 const drafts = require("./draftSessions");
 const { cleanup } = require("./panelLifecycle");
 const {ContainerBuilder,TextDisplayBuilder,ActionRowBuilder,StringSelectMenuBuilder,MessageFlags}=require("discord.js");
@@ -10,7 +12,7 @@ function render(id){
  const captain=data.turn==="A"?data.session.captain_a_discord_id:data.session.captain_b_discord_id;
  const container=new ContainerBuilder().setAccentColor(0xFF3D2C)
   .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-    `## Lobby #${id} · Veto de mapas\n**Draft concluído:** ${(drafts.snapshot(id)?.roster || []).map(player => `<@${player.discord_id}>`).join(" ")}\n**Capitão da vez:** <@${captain}> (Time ${data.turn})\n**Banidos:** ${data.banned.join(", ")||"Nenhum"}\n**Disponíveis:** ${data.available.join(", ")}`
+    `## Lobby #${id} · Veto de mapas\n**Draft concluído:** ${(drafts.snapshot(id)?.roster || []).map(player => `<@${player.discord_id}>`).join(" ")}\n**Capitão da vez:** <@${captain}> (${matchTeam(db,data.session,data.turn)})\n**Banidos:** ${data.banned.join(", ")||"Nenhum"}\n**Disponíveis:** ${data.available.join(", ")}`
   ))
   .addActionRowComponents(new ActionRowBuilder().addComponents(
    new StringSelectMenuBuilder().setCustomId(sessions.componentId("map_veto",id,"ban"))

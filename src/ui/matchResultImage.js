@@ -22,6 +22,7 @@ const row = (player,index,x,y) =>
 
 async function renderMatchResult({matchCode="482731",map="Fortress",winner="B",winners=[],losers=[]}={}) {
   const left=50, right=565;
+  const winnerLabel = winners.find(player => player.captain)?.name || "CAPITAO";
   const roster = (list,x) => list.slice(0,5).map((p,i)=>row(p,i,x,389+i*46)).join("");
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+WIDTH+'" height="'+HEIGHT+'" viewBox="0 0 '+WIDTH+' '+HEIGHT+'">'+
     '<defs>'+
@@ -39,7 +40,7 @@ async function renderMatchResult({matchCode="482731",map="Fortress",winner="B",w
     text(1020,77,"MATCH REPORT - SEASON 01",14,"#A6B0C2",600,'text-anchor="end" letter-spacing="1.3"')+
     '<line x1="50" y1="105" x2="1050" y2="105" stroke="#FFFFFF24"/>'+
     text(54,157,"VICTORY",45,"#FFFFFF",800,'letter-spacing="-1.5"')+
-    text(56,190,"TEAM "+winner+" - "+map.toUpperCase()+" - "+matchCode,16,"#B6C0D1",600,'letter-spacing="1"')+
+    text(56,190,"TIME "+winnerLabel.slice(0,24)+" - "+map.toUpperCase()+" - "+matchCode,16,"#B6C0D1",600,'letter-spacing="1"')+
     rect(814,125,210,82,16,"#FF3D2C")+
     text(836,158,"MATCH STATUS",13,"#FFE3DF",700,'letter-spacing="1"')+
     text(836,185,"COMPLETE",20,"#FFFFFF",800)+
