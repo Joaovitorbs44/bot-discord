@@ -288,7 +288,7 @@ function createSideChoicePanel() {
     .setAccentColor(COLORS.primary)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "## INVISIX PRO\n" +
+        "## INVI SIX PRO\n" +
         "### ESCOLHA DE LADO · 5V5"
       )
     )
@@ -382,7 +382,7 @@ function createCompletedPanel() {
     .setAccentColor(COLORS.success)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "## INVISIX PRO\n" +
+        "## INVI SIX PRO\n" +
         "### CONFIGURAÇÃO CONCLUÍDA"
       )
     )
