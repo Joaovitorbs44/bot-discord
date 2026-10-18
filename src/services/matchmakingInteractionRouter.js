@@ -11,6 +11,8 @@ const drafts = require("./draftSessions");
 const draftPanels = require("./draftPanels");
 const mapVeto = require("./mapVetoSessions");
 const mapVetoPanels = require("./mapVetoPanels");
+const sideChoices = require("./sideChoiceSessions");
+const sidePanels = require("./sideChoicePanels");
 const config = require("../config/config");
 
 async function reject(interaction, content) {
@@ -67,7 +69,9 @@ async function handleSessionComponent(interaction) {
         ? (authorized.state.draftPanel?.channelId || config.discord.draftChannelId)
         : parsed.stage === "map_veto"
           ? (authorized.state.mapVetoPanel?.channelId || config.discord.mapVetoChannelId)
-          : authorized.session.channel_id;
+          : parsed.stage === "side_choice"
+            ? (authorized.state.sideChoicePanel?.channelId || config.discord.mapVetoChannelId)
+            : authorized.session.channel_id;
   if (!channelId || interaction.channelId !== channelId) {
     await reject(interaction,"Este controle pertence a outro canal do lobby.");
     return true;
@@ -122,10 +126,18 @@ async function handleSessionComponent(interaction) {
       return true;
     }
     await reject(interaction,result.finished ? `Mapa definido: **${result.selectedMap}**.` : "Mapa banido.");
-    if (!result.finished) {
-      try { await mapVetoPanels.publish(interaction.client,parsed.sessionId); }
-      catch (error) { console.error("[MULTILOBBY] Map veto refresh failed:",error); }
-    }
+    try {
+      if (result.finished) await sidePanels.publish(interaction.client,parsed.sessionId);
+      else await mapVetoPanels.publish(interaction.client,parsed.sessionId);
+    } catch (error) { console.error("[MULTILOBBY] Map veto handoff failed:",error); }
+    return true;
+  }
+  if (parsed.stage === "side_choice" && interaction.isButton() &&
+      ["attack","defense"].includes(parsed.action)) {
+    const result = sideChoices.choose(parsed.sessionId,interaction.guildId,interaction.user.id,parsed.action);
+    await reject(interaction,result.ok
+      ? `Lados registrados: Time A — ${result.sideA}; Time B — ${result.sideB}. Aguardando criação da partida.`
+      : "Somente o capitão A pode escolher os lados.");
     return true;
   }
   await reject(interaction,"Esta etapa do multi-lobby ainda não foi habilitada.");
