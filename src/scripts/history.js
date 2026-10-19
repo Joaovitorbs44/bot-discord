@@ -1,3 +1,4 @@
+const { badge, playerBadge } = require("../services/rankBadges");
 const { matchTeam } = require("../services/teamLabels");
 const {ContainerBuilder,TextDisplayBuilder,SeparatorBuilder,SeparatorSpacingSize,MessageFlags}=require("discord.js");
 const db=require("../database/database"),s=require("../services/competitiveStats");
@@ -19,7 +20,7 @@ async function handleMatchLookup(interaction){
  const match=db.prepare("SELECT * FROM matches WHERE match_code=? OR match_code=?").get(code,"#"+code);
  if(!match)return interaction.reply({content:"Partida não encontrada.",flags:MessageFlags.Ephemeral});
  const players=db.prepare("SELECT mp.discord_id,mp.team,mp.is_captain,p.r6_nickname,p.r6_rank FROM match_players mp LEFT JOIN players p ON p.discord_id=mp.discord_id WHERE mp.match_id=? ORDER BY mp.team ASC,mp.is_captain DESC,mp.id ASC").all(match.id);
- const team=t=>players.filter(p=>p.team===t).map(p=>(p.is_captain?"👑 ":"• ")+s.safe(p.r6_nickname||"Jogador")+" · "+s.safe(p.r6_rank||"Sem rank")).join("\n")||"Nenhum jogador";
+ const team=t=>players.filter(p=>p.team===t).map(p=>(p.is_captain?"👑 ":"• ")+badge(p.r6_rank)+s.safe(p.r6_nickname||"Jogador")+" · "+s.safe(p.r6_rank||"Sem rank")).join("\n")||"Nenhum jogador";
  const body="### "+s.safe(match.match_code)+"  /  "+s.safe(match.map)+"\n**Status:** "+({finished:"Finalizada",playing:"Em andamento",pending_confirmation:"Aguardando confirmação",disputed:"Em disputa",cancelled:"Cancelada"}[match.status]||"—")+"  ·  **Vencedor:** "+(match.winner_team?matchTeam(db,match,match.winner_team):"Não definido")+"\n\n### "+matchTeam(db,match,"A")+" · "+s.safe(match.side_a)+"\n"+team("A")+"\n\n### "+matchTeam(db,match,"B")+" · "+s.safe(match.side_b)+"\n"+team("B");
  return interaction.reply({components:[panel("DETALHES DA PARTIDA",body,"Registro permanente do matchmaking")],flags:MessageFlags.IsComponentsV2,allowedMentions:{parse:[]}});
 }

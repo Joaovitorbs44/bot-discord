@@ -1,3 +1,4 @@
+const { playerBadge } = require("./rankBadges");
 const db = require("../database/database");
 const { matchTeam } = require("./teamLabels");
 const { cleanup } = require("./panelLifecycle");
@@ -9,7 +10,7 @@ function render(sessionId) {
   const data = drafts.snapshot(sessionId);
   if (!data || data.session.status !== "active" || data.session.stage !== "draft") return null;
   const unpicked = data.roster.filter(p=>!p.team);
-  const teams = ["A","B"].map(team=>`**${matchTeam(db,data.session,team)}:** ${data.roster.filter(p=>p.team===team).map(p=>`<@${p.discord_id}>`).join(", ") || "—"}`).join("\n");
+  const teams = ["A","B"].map(team=>`**${matchTeam(db,data.session,team)}:** ${data.roster.filter(p=>p.team===team).map(p=>`${playerBadge(p.discord_id)}<@${p.discord_id}>`).join(", ") || "—"}`).join("\n");
   const container = new ContainerBuilder().setAccentColor(0xFF3D2C)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `## Lobby #${sessionId} · Draft\n${teams}\n**Escolha ${data.picks+1}/8** · ${matchTeam(db,data.session,data.turn)} · Capitão: <@${data.turn==="A"?data.session.captain_a_discord_id:data.session.captain_b_discord_id}>`

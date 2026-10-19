@@ -1,3 +1,4 @@
+const { badge, playerBadge } = require("../services/rankBadges");
 const { captainTeam } = require("../services/teamLabels");
 const { cleanup } = require("../services/panelLifecycle");
 
@@ -138,7 +139,7 @@ function createTeamList(players, captain) {
 
     return (
       `${isCaptain ? "👑" : "•"} ` +
-      `<@${player.discordId}> · ` +
+      `${badge(player.rank) || playerBadge(player.discordId)}<@${player.discordId}> · ` +
       safeText(player.nickname || player.discordId)
     );
   }).join("\n");

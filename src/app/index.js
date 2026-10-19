@@ -341,6 +341,12 @@ client.once(
       `Bot conectado como ${readyClient.user.tag}`
     );
 
+    try {
+      await require("../services/rankBadges").initialize(readyClient);
+    } catch (error) {
+      console.error("[RANK BADGES] Inicialização indisponível:", error.code || error.message);
+    }
+
     await initializeMatchmaking(
       readyClient
     );

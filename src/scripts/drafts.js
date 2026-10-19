@@ -1,3 +1,4 @@
+const { badge, playerBadge } = require("../services/rankBadges");
 const { captainTeam } = require("../services/teamLabels");
 const { removeMessage } = require("../services/panelLifecycle");
 
@@ -141,7 +142,7 @@ function createPlayerList(players, captain) {
 
     return (
       `${isCaptain ? "👑" : "•"} ` +
-      `${safeText(player.nickname)}\n` +
+      `${badge(player.rank)}${safeText(player.nickname)}\n` +
       `-# ${safeText(player.rank)}`
     );
   }).join("\n");
@@ -337,7 +338,7 @@ function createDraftPanel() {
         (
           availablePlayers.length
             ? availablePlayers.map(player =>
-                `• ${safeText(player.nickname)} · ` +
+                `• ${badge(player.rank)}${safeText(player.nickname)} · ` +
                 safeText(player.rank)
               ).join("\n")
             : "Nenhum."

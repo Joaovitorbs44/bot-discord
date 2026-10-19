@@ -1,3 +1,4 @@
+const { badge, playerBadge } = require("../services/rankBadges");
 const { ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
 const db = require("../database/database");
 const stats = require("../services/competitiveStats");
@@ -14,7 +15,7 @@ function buildRanking(page = 0) {
     const kd = require("../services/scoreboardStore").totals(p.discord_id,season.id);
     const pos = current * PAGE_SIZE + i + 1;
     const marker = pos === 1 ? "🥇" : pos === 2 ? "🥈" : pos === 3 ? "🥉" : "**" + pos + ".**";
-    return marker + " **" + stats.safe(p.r6_nickname) + "** · **" + p.points + " pts**\n-# " + p.wins + "V / " + p.losses + "D · " + stats.winRate(p.wins,p.matches_played) + "% WR · " + stats.safe(p.r6_rank) + "\n-# " + kd.kills + " K / " + kd.deaths + " D · **" + kd.kd + " K/D** · " + kd.matches + " placares aprovados";
+    return marker + " " + badge(p.r6_rank) + "**" + stats.safe(p.r6_nickname) + "** · **" + p.points + " pts**\n-# " + p.wins + "V / " + p.losses + "D · " + stats.winRate(p.wins,p.matches_played) + "% WR · " + stats.safe(p.r6_rank) + "\n-# " + kd.kills + " K / " + kd.deaths + " D · **" + kd.kd + " K/D** · " + kd.matches + " placares aprovados";
   }).join("\n\n") || "Nenhum jogador inscrito nesta temporada.";
   const panel = new ContainerBuilder().setAccentColor(0xFF3D2C)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent("## INVI SIX PRO\n-# RANKING COMPETITIVO / " + stats.safe(season?.name || "SEM TEMPORADA ATIVA")))

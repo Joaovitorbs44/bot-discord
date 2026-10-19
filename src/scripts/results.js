@@ -1,3 +1,4 @@
+const { badge, playerBadge } = require("../services/rankBadges");
 const { matchTeam } = require("../services/teamLabels");
 
 const {
@@ -216,7 +217,7 @@ function createFinishedMatchPanel(
 
   const playerList = players =>
     players.map(player =>
-      `• <@${player.discord_id}> · ` +
+      `• ${badge(player.r6_rank) || playerBadge(player.discord_id)}<@${player.discord_id}> · ` +
       safeText(player.r6_nickname)
     ).join("\n") || "Nenhum jogador.";
 

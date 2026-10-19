@@ -1,3 +1,4 @@
+const { badge, playerBadge } = require("../services/rankBadges");
 const {ContainerBuilder,TextDisplayBuilder,SeparatorBuilder,SeparatorSpacingSize,MessageFlags}=require("discord.js");
 const s=require("../services/competitiveStats");
 async function handleProfile(interaction){
@@ -12,7 +13,7 @@ async function handleProfile(interaction){
  const panel=new ContainerBuilder().setAccentColor(0xFF3D2C)
  .addTextDisplayComponents(new TextDisplayBuilder().setContent("## INVI SIX PRO\n-# PERFIL COMPETITIVO  /  "+s.safe(season?.name||"SEM TEMPORADA ATIVA")))
  .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
- .addTextDisplayComponents(new TextDisplayBuilder().setContent("### "+s.safe(player.r6_nickname)+"\n<@"+player.discord_id+"> · Rank R6: **"+s.safe(player.r6_rank)+"**\n\n### "+st.points+" PTS  ·  "+(pos?"#"+pos:"—")+" NO RANKING\n**"+st.wins+"** vitórias  /  **"+st.losses+"** derrotas  /  **"+st.matches_played+"** partidas\n**"+s.winRate(st.wins,st.matches_played)+"%** win rate  ·  **"+s.streak(user.id,season?.id)+"** sequência\n**"+kd.kills+"** kills / **"+kd.deaths+"** mortes · **"+kd.kd+" K/D** · "+kd.matches+" placares aprovados"))
+ .addTextDisplayComponents(new TextDisplayBuilder().setContent("### "+badge(player.r6_rank)+s.safe(player.r6_nickname)+"\n<@"+player.discord_id+"> · Rank R6: **"+s.safe(player.r6_rank)+"**\n\n### "+st.points+" PTS  ·  "+(pos?"#"+pos:"—")+" NO RANKING\n**"+st.wins+"** vitórias  /  **"+st.losses+"** derrotas  /  **"+st.matches_played+"** partidas\n**"+s.winRate(st.wins,st.matches_played)+"%** win rate  ·  **"+s.streak(user.id,season?.id)+"** sequência\n**"+kd.kills+"** kills / **"+kd.deaths+"** mortes · **"+kd.kd+" K/D** · "+kd.matches+" placares aprovados"))
  .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
  .addTextDisplayComponents(new TextDisplayBuilder().setContent("### ÚLTIMAS PARTIDAS\n"+recent))
  .addTextDisplayComponents(new TextDisplayBuilder().setContent("-# O rank oficial do R6 não muda com a pontuação do lobby."));
