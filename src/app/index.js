@@ -364,6 +364,7 @@ client.on(
       if (await scoreboards.handle(interaction)) return;
       if (await handleSessionComponent(interaction)) return;
       if (await enforceChannel(interaction)) return;
+      if (await require("../scripts/community").handle(interaction)) return;
       if (interaction.isButton() && interaction.customId.startsWith("ranking_page:")) return handleRankingPage(interaction);
 
       // ======================================

@@ -16,6 +16,7 @@ const { command: homologationCommand } = require("./homologation");
 const { commands: scoreboardCommands } = require("./scoreboards");
 
 const commands = [
+  ...require("./community").commands,
   ...scoreboardCommands,
   homologationCommand,
   new SlashCommandBuilder()

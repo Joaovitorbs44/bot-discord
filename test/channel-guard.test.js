@@ -52,7 +52,7 @@ test("preview command and components use painel-staff independently of requests 
   });
   for (const [name, target] of Object.entries({
     "limpar-fila": "queue", "remover-fila": "queue", "remover-timeout": "queue",
-    ranking: "table", perfil: "table", temporada: "table", temporadas: "table",
+    mapas: "table", ranking: "table", perfil: "table", temporada: "table", temporadas: "table",
     historico: "results", partida: "results", pontos: "moderation", solicitacoes: "requests"
   })) {
     assert.equal(await enforceChannel(command(name, target, true)), false, name);

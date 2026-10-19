@@ -405,6 +405,7 @@ function createIndexes() {
       ON matchmaking_sessions(guild_id) WHERE status='active'`);
   }
   require("../services/scoreboardStore").initialize();
+  require("../services/communityFeatures").initialize();
   const correction = require("../services/confirmedMatchCorrection").apply(db);
   console.log("[DATA FIX] #298604:", JSON.stringify(correction));
 }

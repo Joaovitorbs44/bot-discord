@@ -75,7 +75,7 @@ test("staff approval archives evidence, deletes source only after commit and kee
     if(request==="../database/database")return {name:path.join(root,"test.sqlite")};
     if(request==="../config/config")return {discord:{guildId:"guild",staffRoleId:"staff"}};
     if(request==="../services/scoreboardStore")return {
-     get:()=>report,forMatch:()=>report,match:()=>({id:1}),
+     get:()=>report,forMatch:()=>report,match:()=>({id:1}),corrections:()=>[],
      roster:()=>Array.from({length:10},(_,n)=>({discord_id:`p${n}`,r6_nickname:`nick${n}`,team:n<5?"A":"B"})),
      approve:()=>{events.push("commit");report.status="approved";return report;}
     };
@@ -112,6 +112,15 @@ test("staff approval archives evidence, deletes source only after commit and kee
   assert.match(panel.description,/K\/D aprovado/);
   assert.doesNotMatch(panel.description,/Confira|exigem revisão|OCR/);
   assert.match(panel.footer.text,/acumulado da temporada/);
+  assert.equal(response.components.length,1);
+  let modal;
+  await handlers.handle({...interaction,customId:"kd:choose:1",values:["p0"],isButton:()=>false,isStringSelectMenu:()=>true,showModal:async value=>{modal=value.toJSON();}});
+  assert.equal(modal.custom_id,"kd:amend:1:p0:0:1");
+  assert.equal(modal.components.length,3);
+  assert.equal(modal.components[2].components[0].custom_id,"reason");
+  modal=null;
+  await handlers.handle({...interaction,customId:"kd:choose:1",values:["p0"],member:{roles:{cache:{has:()=>false}}},isButton:()=>false,isStringSelectMenu:()=>true,showModal:async value=>{modal=value;}});
+  assert.equal(modal,null);
   fs.rmSync(archive);
   report.status="pending";events.length=0;
   await handlers.handle({...interaction,channelId:"public"});

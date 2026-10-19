@@ -13,6 +13,12 @@ function initialize() {
     kills INTEGER NOT NULL CHECK(kills BETWEEN 0 AND 99),
     deaths INTEGER NOT NULL CHECK(deaths BETWEEN 0 AND 99),
     PRIMARY KEY(match_id,discord_id)
+  );
+  CREATE TABLE IF NOT EXISTS scoreboard_corrections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, report_id INTEGER NOT NULL REFERENCES scoreboard_reports(id),
+    discord_id TEXT NOT NULL, old_kills INTEGER NOT NULL, old_deaths INTEGER NOT NULL,
+    new_kills INTEGER NOT NULL, new_deaths INTEGER NOT NULL, staff_id TEXT NOT NULL,
+    reason TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );`);
 }
 function match(code) {
@@ -82,7 +88,31 @@ function totals(discordId,seasonId=null) {
     .get(...(seasonId?[discordId,seasonId]:[discordId]));
   return {...row,kd:row.matches?(row.deaths?(row.kills/row.deaths).toFixed(2):(row.kills?"∞":"0.00")):"—"};
 }
+function corrections(reportId) {
+  return db.prepare("SELECT * FROM scoreboard_corrections WHERE report_id=? ORDER BY id DESC LIMIT 5").all(reportId);
+}
+function amend(id,discordId,kills,deaths,staffId,reason,expectedKills,expectedDeaths) {
+  if(!Number.isInteger(kills)||!Number.isInteger(deaths)||kills<0||deaths<0||kills>99||deaths>99)throw new Error("Use inteiros de 0 a 99.");
+  reason=String(reason||"").trim();
+  if(!staffId||reason.length<5||reason.length>300)throw new Error("Informe um motivo de 5 a 300 caracteres.");
+  return db.transaction(()=>{
+    const report=get(id);
+    if(report?.status!=="approved"||report.match_status!=="finished")throw new Error("A correção exige um placar aprovado e uma partida finalizada.");
+    if(!roster(report.match_id).some(p=>p.discord_id===discordId))throw new Error("Jogador não pertence à partida.");
+    const old=db.prepare("SELECT kills,deaths FROM player_match_stats WHERE match_id=? AND discord_id=?").get(report.match_id,discordId);
+    if(!old||old.kills!==expectedKills||old.deaths!==expectedDeaths)throw new Error("Este K/D mudou. Abra /partidas novamente antes de corrigir.");
+    const rows=JSON.parse(report.rows_json),row=rows.find(r=>r.discordId===discordId);
+    if(!row||row.kills!==old.kills||row.deaths!==old.deaths)throw new Error("Placar inconsistente; nenhuma alteração aplicada.");
+    if(kills===old.kills&&deaths===old.deaths)throw new Error("Os valores informados já estão registrados.");
+    db.prepare("UPDATE player_match_stats SET kills=?,deaths=? WHERE match_id=? AND discord_id=?").run(kills,deaths,report.match_id,discordId);
+    row.kills=kills;row.deaths=deaths;
+    db.prepare("UPDATE scoreboard_reports SET rows_json=? WHERE id=?").run(JSON.stringify(rows),id);
+    db.prepare("INSERT INTO scoreboard_corrections(report_id,discord_id,old_kills,old_deaths,new_kills,new_deaths,staff_id,reason) VALUES(?,?,?,?,?,?,?,?)")
+      .run(id,discordId,old.kills,old.deaths,kills,deaths,staffId,reason);
+    return get(id);
+  })();
+}
 function recent() {
   return db.prepare("SELECT r.id,r.status,m.match_code,m.map FROM scoreboard_reports r JOIN matches m ON m.id=r.match_id ORDER BY r.id DESC LIMIT 10").all();
 }
-module.exports={initialize,match,roster,get,forMatch,submit,correct,approve,reject,totals,recent};
+module.exports={initialize,match,roster,get,forMatch,submit,correct,approve,reject,totals,recent,amend,corrections};

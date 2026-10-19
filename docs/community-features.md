@@ -1,0 +1,8 @@
+# Mapas, correções de K/D e denúncias
+
+- `/mapas [jogador] [temporada]`: consulta privada, no canal tabela (staff pode em qualquer canal). Sem temporada, usa a atual. Conta apenas partidas finalizadas com vencedor. K/D usa soma de kills dividida pela soma de mortes dos placares aprovados; informa a quantidade de placares para não confundir com o total de partidas.
+- `/partidas codigo:#...`: staff pode abrir o arquivo privado e selecionar um jogador mesmo após aprovação. O formulário pede kills, mortes e motivo. Correção substitui somente esse jogador nessa partida; mantém a aprovação, imagem, pontos, vencedor e demais jogadores. A transação grava antes/depois, autor, motivo e horário UTC em `scoreboard_corrections`; falha na auditoria desfaz toda a alteração. Formulário com valores anteriores desatualizados é recusado. Últimas cinco correções aparecem na consulta; histórico completo permanece no banco.
+- `/denunciar codigo:#... motivo:... [jogador]`: privado, disponível nos canais do servidor. Autor precisa ter participado; alvo opcional precisa pertencer à mesma partida. Um protocolo por autor/partida. Nenhuma punição automática. O painel-staff recebe somente um aviso com protocolo, sem relato nem identidades. Falha nessa notificação não apaga a denúncia.
+- `/denuncias`: staff consulta os dez protocolos mais recentes, com os abertos primeiro. `/denuncias protocolo:42` abre detalhes em privado. Adicionar `conclusao:...` registra a decisão, responsável, data e encerra o protocolo. Sem alterações em pontos ou penalidades.
+
+Tabelas novas são criadas sem reescrever dados existentes. O backup SQLite inclui denúncias e correções; as imagens continuam no diretório de arquivos de placares.

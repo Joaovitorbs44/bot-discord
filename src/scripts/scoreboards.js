@@ -95,6 +95,7 @@ function view(report) {
   const players=store.roster(report.match_id),rows=JSON.parse(report.rows_json);
   const match=store.match(report.match_code);
   const approved=report.status==="approved";
+  const audit=approved ? store.corrections(report.id) : [];
   const status={approved:"✅ K/D aprovado",pending:"⏳ Aguardando revisão",rejected:"❌ Placar rejeitado"}[report.status]||report.status;
   const winner=match?.winner_team ? matchTeam(db,match,match.winner_team) : "Não definido";
   const description=[
@@ -103,7 +104,8 @@ function view(report) {
     approved ? "Estatísticas registradas. Nenhuma ação pendente." : report.status==="pending"
       ? "Confira a imagem e os 10 jogadores. Use o seletor para corrigir os campos antes de aprovar."
       : "Este envio não entra nas estatísticas.",
-    report.status==="pending" ? report.ocr_note : null
+    report.status==="pending" ? report.ocr_note : null,
+    audit.length ? "\n**Últimas correções (UTC):**\n"+audit.map(a=>`<@${a.staff_id}> · <@${a.discord_id}> · ${a.old_kills}/${a.old_deaths} → ${a.new_kills}/${a.new_deaths} · ${a.created_at}\n${safe(a.reason,180)}`).join("\n") : null
   ].filter(Boolean).join("\n");
   const teamFields=["A","B"].map(team=>{
     const captainId=team==="A"?match?.captain_a_discord_id:match?.captain_b_discord_id;
@@ -124,8 +126,10 @@ function view(report) {
     .setFooter({text:"K/D desta partida. /perfil e /ranking mostram o acumulado da temporada."})
     .setImage("attachment://placar.png");
   const components=[];
-  if(report.status==="pending") {
+  if(["pending","approved"].includes(report.status)) {
     components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`kd:choose:${report.id}`).setPlaceholder("Corrigir kills e mortes de um jogador").addOptions(players.map(p=>({label:p.r6_nickname.slice(0,100),value:p.discord_id})))));
+  }
+  if(report.status==="pending") {
     components.push(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`kd:approve:${report.id}`).setLabel("Conferi os 10 jogadores — Aprovar").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(`kd:reject:${report.id}`).setLabel("Rejeitar placar").setStyle(ButtonStyle.Danger)));
@@ -156,27 +160,34 @@ async function history(i) {
 async function handle(i) {
   if(!i.customId?.startsWith("kd:"))return false;
   if(!staffAccess(i)){await fail(i,"Revisão exclusiva da staff.");return true;}
-  const [,action,rawId,playerId]=i.customId.split(":");
+  const [,action,rawId,playerId,oldKills,oldDeaths]=i.customId.split(":");
   if(!/^\d+$/.test(rawId)){await fail(i,"Placar inválido.");return true;}
   const report=store.get(Number(rawId));
   if(!report){await fail(i,"Placar não encontrado.");return true;}
   try {
     if(action==="choose"&&i.isStringSelectMenu()) {
-      if(report.status!=="pending")throw new Error("Este placar já foi revisado.");
+      if(!["pending","approved"].includes(report.status))throw new Error("Este placar não pode ser corrigido.");
       const id=i.values[0],row=JSON.parse(report.rows_json).find(r=>r.discordId===id);
       if(!row)throw new Error("Jogador inválido.");
-      const modal=new ModalBuilder().setCustomId(`kd:edit:${report.id}:${id}`).setTitle("Corrigir K/D");
+      const modal=new ModalBuilder().setCustomId(report.status==="approved"?`kd:amend:${report.id}:${id}:${row.kills}:${row.deaths}`:`kd:edit:${report.id}:${id}`).setTitle("Corrigir K/D");
       for(const [key,label,value] of [["kills","Kills",row.kills],["deaths","Mortes",row.deaths]]) {
         const input=new TextInputBuilder().setCustomId(key).setLabel(label).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(2);
         if(value!==null)input.setValue(String(value));
         modal.addComponents(new ActionRowBuilder().addComponents(input));
       }
+      if(report.status==="approved")modal.addComponents(new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId("reason").setLabel("Motivo da correção (fica registrado)").setStyle(TextInputStyle.Paragraph).setRequired(true).setMinLength(5).setMaxLength(300)));
       await i.showModal(modal);return true;
     }
-    if(action==="edit"&&i.isModalSubmit()) {
+    if(["edit","amend"].includes(action)&&i.isModalSubmit()) {
       const k=i.fields.getTextInputValue("kills").trim(),d=i.fields.getTextInputValue("deaths").trim();
       if(!/^\d{1,2}$/.test(k)||!/^\d{1,2}$/.test(d))throw new Error("Use inteiros de 0 a 99.");
-      store.correct(report.id,playerId,Number(k),Number(d));
+      if(action==="amend") {
+        if(!/^\d{1,2}$/.test(oldKills||"")||!/^\d{1,2}$/.test(oldDeaths||""))throw new Error("Abra /partidas novamente para corrigir.");
+        store.amend(report.id,playerId,Number(k),Number(d),i.user.id,i.fields.getTextInputValue("reason"),Number(oldKills),Number(oldDeaths));
+      } else {
+        store.correct(report.id,playerId,Number(k),Number(d));
+      }
       await i.deferUpdate();
       await i.editReply({...view(store.get(report.id)),attachments:[]});return true;
     }

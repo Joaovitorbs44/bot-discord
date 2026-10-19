@@ -2,6 +2,7 @@ const { MessageFlags, PermissionFlagsBits } = require("discord.js");
 const config = require("../config/config");
 const STAFF_PANEL_ID = "1557714957007593472";
 const channelByCommand = {
+  mapas: "rankingChannelId",
   placar: "resultsChannelId", ranking: "rankingChannelId", perfil: "rankingChannelId",
   temporada: "rankingChannelId", temporadas: "rankingChannelId",
   historico: "resultsChannelId", partida: "resultsChannelId",
