@@ -13,6 +13,6 @@
 
 ## Voz
 
-Salas usam o nome dos capitães, visíveis apenas aos jogadores do respectivo time, staff e administradores. São criadas na categoria de puxar-partida; pode definir `TEAM_VOICE_CATEGORY_ID` para escolher outra categoria. O bot precisa de Gerenciar canais, Mover membros, Ver canal e Conectar na categoria e salas. Usa GuildVoiceStates, sem novo intent privilegiado. IDs são persistidos; recuperação reutiliza as salas e não move jogadores novamente por conta de um reinício. Após encerramento, a limpeza periódica exclui somente as salas registradas e vazias; nunca desconecta jogadores para apagar uma sala.
+Usa exclusivamente as salas permanentes fornecidas pelo administrador: Time Azul (`1555960315835842600`) para o time A e Time Laranja (`1555960732234027170`) para o time B. Mantém nomes e permissões das salas. Não cria, renomeia ou apaga canais. O bot precisa de Ver canal, Conectar e Mover membros nas salas de origem/destino; não precisa de Gerenciar canais. Usa GuildVoiceStates, sem novo intent privilegiado. A vinculação ao lobby é persistida; outro lobby não pode usar o mesmo par enquanto a primeira partida estiver ativa. Após encerramento só libera a vinculação. Recuperação após reinício não move ninguém automaticamente.
 
 As tabelas são aditivas (`lobby_reserves`, `match_cancel_requests`, `lobby_voice_channels`). Backups SQLite existentes incluem os novos registros.

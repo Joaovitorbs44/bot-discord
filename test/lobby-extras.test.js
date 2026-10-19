@@ -63,29 +63,29 @@ test('cancel request requires a participant, is pending until staff decides, and
   assert.equal(f.store.cancellation(r2.id).reviewed_by,'staff2');
  }finally{f.close();}
 });
-test('voice rooms isolate each roster, move only connected players, reuse rooms and delete only empty terminal rooms',async()=>{
- const f=fixture();const {ChannelType,PermissionFlagsBits}=require('discord.js');
+test('fixed voice rooms move connected teammates, never create or delete channels, and prevent two lobbies sharing the pair',async()=>{
+ const f=fixture();const {ChannelType}=require('discord.js');
  try{
   f.db.prepare("UPDATE matchmaking_sessions SET stage='map_veto'").run();
-  const channels=new Map();channels.find=fn=>[...channels.values()].find(fn);
-  const moves=[],created=[];
+  const moves=[],channels=new Map();let allowed=false;
   const members=new Map(Array.from({length:10},(_,n)=>['p'+n,{voice:{channelId:n%2?'current':null,setChannel:async c=>moves.push(['p'+n,c.id])}}]));
-  const guild={id:'100000000000000001',members:{fetchMe:async()=>({permissions:{has:()=>true}}),fetch:async id=>members.get(id)},channels:{fetch:async id=>id?channels.get(id):channels,create:async data=>{
-    created.push(data);const c={id:'room'+created.length,name:data.name,type:ChannelType.GuildVoice,members:new Map(),permissionOverwrites:{cache:new Map([['bot',{allow:{has:()=>true}}]])},delete:async()=>channels.delete(c.id)};channels.set(c.id,c);return c;
-  }}};
-  const client={user:{id:'bot'},guilds:{fetch:async()=>guild},channels:{fetch:async id=>channels.get(id)}};
-  const voice=load('../src/services/teamVoice',{'../database/database':f.db,'../config/config':{discord:{guildId:guild.id,staffRoleId:'staff',queueChannelId:'queue'}}});
-  await voice.ensure(client,1);assert.equal(created.length,2);assert.equal(moves.length,5);
-  assert.equal(created[0].permissionOverwrites.find(p=>p.id===guild.id).deny.includes(PermissionFlagsBits.Connect),true);
-  assert.ok(created[0].permissionOverwrites.some(p=>p.id==='p0'));assert.ok(!created[0].permissionOverwrites.some(p=>p.id==='p5'));
-  assert.equal(created[0].name,'Lobby 1 · Time nick0');
+  const guild={id:'100000000000000001',members:{fetchMe:async()=>({}),fetch:async id=>members.get(id)},channels:{fetch:async id=>channels.get(id),create:async()=>{throw Error('must never create');}}};
+  for(const id of ['1555960315835842600','1555960732234027170'])channels.set(id,{id,guildId:guild.id,type:ChannelType.GuildVoice,permissionsFor:()=>({has:()=>allowed}),delete:async()=>{throw Error('must never delete');}});
+  const client={guilds:{fetch:async()=>guild}};
+  const voice=load('../src/services/teamVoice',{'../database/database':f.db,'../config/config':{discord:{guildId:guild.id}}});
+  await assert.rejects(voice.ensure(client,1),/Mover membros/);assert.equal(moves.length,0);
+  allowed=true;
+  const result=await voice.ensure(client,1);assert.equal(moves.length,5);
+  assert.equal(result[0].channelId,'1555960315835842600');assert.equal(result[1].channelId,'1555960732234027170');
+  assert.deepEqual(moves.map(([id,room])=>[id,room]),[['p1','1555960315835842600'],['p3','1555960315835842600'],['p5','1555960732234027170'],['p7','1555960732234027170'],['p9','1555960732234027170']]);
   for(const m of members.values())m.voice.channelId=null;
-  await voice.ensure(client,1);assert.equal(created.length,2);assert.equal(moves.length,5);
-  f.db.prepare("UPDATE matchmaking_sessions SET match_id=1,status='completed',stage='playing'").run();
-  channels.get('room1').members.set('p0',{});
-  await voice.cleanup(client);assert.equal(channels.size,1);assert.ok(channels.has('room1'));
-  channels.get('room1').members.clear();await voice.cleanup(client);assert.equal(channels.size,0);
+  await voice.ensure(client,1);assert.equal(moves.length,5);
+  f.db.exec("INSERT INTO matchmaking_sessions VALUES(2,'100000000000000001','active','map_veto',NULL,0,NULL,'p0','p5'); INSERT INTO matchmaking_session_players(session_id,discord_id,team,ready_confirmed,joined_at) SELECT 2,discord_id,team,ready_confirmed,joined_at FROM matchmaking_session_players WHERE session_id=1;");
+  await assert.rejects(voice.ensure(client,2),/outro lobby/);assert.equal(moves.length,5);
+  f.db.prepare("UPDATE matchmaking_sessions SET match_id=1,status='completed',stage='playing' WHERE id=1").run();
+  await voice.cleanup(client);assert.equal(channels.size,2);
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM lobby_voice_channels').get().n,0);
+  await voice.ensure(client,2,false);assert.equal(moves.length,5);assert.equal(channels.size,2);
  }finally{f.close();}
 });
 test('staff cancellation controls reject players before exposing requests or decisions',async()=>{
