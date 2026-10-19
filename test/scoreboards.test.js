@@ -75,7 +75,7 @@ test("staff approval archives evidence, deletes source only after commit and kee
     if(request==="../database/database")return {name:path.join(root,"test.sqlite")};
     if(request==="../config/config")return {discord:{guildId:"guild",staffRoleId:"staff"}};
     if(request==="../services/scoreboardStore")return {
-     get:()=>report,forMatch:()=>report,match:()=>({id:1}),corrections:()=>[],
+     get:()=>report,forMatch:()=>report,match:()=>({id:1,created_at:"2026-10-18 01:30:00"}),corrections:()=>[],
      roster:()=>Array.from({length:10},(_,n)=>({discord_id:`p${n}`,r6_nickname:`nick${n}`,team:n<5?"A":"B"})),
      approve:()=>{events.push("commit");report.status="approved";return report;}
     };
@@ -110,6 +110,8 @@ test("staff approval archives evidence, deletes source only after commit and kee
   assert.match(panel.fields[0].value,/nick0/);
   assert.match(panel.fields[1].value,/nick5/);
   assert.match(panel.description,/K\/D aprovado/);
+  assert.match(panel.description,/17\/10\/2026 às 22:30 \(Brasília\)/);
+  assert.ok(panel.fields[0].value.startsWith("\u200b\n"));
   assert.doesNotMatch(panel.description,/Confira|exigem revisão|OCR/);
   assert.match(panel.footer.text,/acumulado da temporada/);
   assert.equal(response.components.length,1);

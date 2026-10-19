@@ -1,3 +1,4 @@
+const { matchDate } = require("../services/matchDate");
 const { matchTeam } = require("../services/teamLabels");
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, EmbedBuilder, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
 const fs = require("node:fs");
@@ -100,6 +101,8 @@ function view(report) {
   const winner=match?.winner_team ? matchTeam(db,match,match.winner_team) : "Não definido";
   const description=[
     `**${status}**`,
+    `📅 Registro da partida: ${matchDate(match?.created_at)}`,
+    match?.finished_at ? `🏁 Finalizada: ${matchDate(match.finished_at)}` : null,
     `**Vencedor da partida:** ${winner}`,
     approved ? "Estatísticas registradas. Nenhuma ação pendente." : report.status==="pending"
       ? "Confira a imagem e os 10 jogadores. Use o seletor para corrigir os campos antes de aprovar."
@@ -118,7 +121,7 @@ function view(report) {
       const kd=row.deaths?(row.kills/row.deaths).toFixed(2).replace(".",","):(row.kills?"∞":"0,00");
       return name+`\n${row.kills} kills · ${row.deaths} mortes · **${kd} K/D**`;
     }).join("\n\n");
-    return {name:`${team==="A"?"🟠":"🔵"} ${matchTeam(db,match,team,true)}`,value:value||"Nenhum jogador registrado.",inline:false};
+    return {name:`${team==="A"?"🟠":"🔵"} ${matchTeam(db,match,team,true)}`,value:"\u200b\n"+(value||"Nenhum jogador registrado."),inline:false};
   });
   const embed=new EmbedBuilder().setColor(approved?0x278451:report.status==="rejected"?0x454650:0xFF3D2C)
     .setTitle(`Partida ${report.match_code} · ${report.map}`)
