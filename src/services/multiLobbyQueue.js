@@ -1,3 +1,4 @@
+const { situationButton,channelLink } = require("../ui/guidance");
 // Opt-in persistent multi-lobby queue. Legacy queue remains the default.
 const {MessageFlags}=require("discord.js");
 const db=require("../database/database");
@@ -42,24 +43,24 @@ async function handle(interaction){
  if(!enabled())return false;
  if(!interaction.isButton?.()||!["queue_join","queue_leave"].includes(interaction.customId))return false;
  if(interaction.guildId!==config.discord.guildId||interaction.channelId!==config.discord.queueChannelId){
-  await interaction.reply({content:"Use a fila no canal de matchmaking.",flags:MessageFlags.Ephemeral});
+  await interaction.reply({content:"Abra o canal da fila pelo botão abaixo e tente novamente.",components:channelLink(interaction.guildId,config.discord.queueChannelId,"Abrir fila"),flags:MessageFlags.Ephemeral});
   return true;
  }
  try{assertReady();}
  catch(error){
   console.error("[MULTILOBBY] Queue unavailable:",error);
-  await interaction.reply({content:"Fila múltipla indisponível: migração pendente ou fila antiga ainda ativa.",flags:MessageFlags.Ephemeral});
+  await interaction.reply({content:"A fila está temporariamente indisponível. Avise a staff e tente novamente após a liberação.",flags:MessageFlags.Ephemeral});
   return true;
  }
  const guildId=interaction.guildId,id=interaction.user.id;
  if(interaction.customId==="queue_join"){
   const problem=validatePlayer(id);
   if(problem){
-   await interaction.reply({content:problem,flags:MessageFlags.Ephemeral});
+   await interaction.reply({content:problem+" Consulte sua situação para ver o próximo passo.",components:situationButton(),flags:MessageFlags.Ephemeral});
    return true;
   }
   if(!waiting.enqueue(guildId,id)){
-   await interaction.reply({content:"Você já está na fila ou em um lobby ativo.",flags:MessageFlags.Ephemeral});
+   await interaction.reply({content:"Você já está na fila ou em um lobby ativo. Consulte sua situação para abrir o canal da etapa atual.",components:situationButton(),flags:MessageFlags.Ephemeral});
    return true;
   }
  }else if(!waiting.dequeue(guildId,id)){
@@ -84,3 +85,4 @@ async function recover(client){
  return drain(client,config.discord.guildId,config.discord.queueChannelId);
 }
 module.exports={enabled,handle,recover,drain};
+

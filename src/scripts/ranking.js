@@ -24,8 +24,8 @@ function buildRanking(page = 0) {
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent("**" + total + "** participantes · **" + finished + "** partidas finalizadas\n-# Vitória +5 pts / Derrota −3 pts"));
   const buttons = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("ranking_page:" + (current-1)).setLabel("Anterior").setStyle(ButtonStyle.Secondary).setDisabled(current === 0),
-    new ButtonBuilder().setCustomId("ranking_page:" + (current+1)).setLabel("Próxima").setStyle(ButtonStyle.Secondary).setDisabled(current >= pages-1)
+    new ButtonBuilder().setCustomId("ranking_page:" + (current-1)).setLabel("Ver página anterior").setStyle(ButtonStyle.Secondary).setDisabled(current === 0),
+    new ButtonBuilder().setCustomId("ranking_page:" + (current+1)).setLabel("Ver próxima página").setStyle(ButtonStyle.Secondary).setDisabled(current >= pages-1)
   );
   return { components: [panel, buttons], flags: MessageFlags.IsComponentsV2, allowedMentions: {parse:[]} };
 }

@@ -1,3 +1,4 @@
+const { channelLink, situationButton } = require("../ui/guidance");
 
 const {
   ActionRowBuilder,
@@ -102,7 +103,8 @@ async function handleQueue(interaction) {
 
   if (!player || player.access_active !== 1) {
     return interaction.reply({
-      content: "Você não possui acesso ao matchmaking.",
+      content: "Seu acesso ao matchmaking ainda não está ativo. Abra o canal de acesso, solicite a aprovação e aguarde a staff.",
+      components: channelLink(interaction.guildId,config.discord.accessChannelId,"Solicitar acesso"),
       flags: MessageFlags.Ephemeral
     });
   }
@@ -110,7 +112,8 @@ async function handleQueue(interaction) {
   if (player.is_banned === 1) {
     return interaction.reply({
       content:
-        "Você está impedido de participar do matchmaking.",
+        "Seu acesso ao matchmaking está bloqueado. Procure a staff para solicitar uma revisão.",
+      components: situationButton(),
       flags: MessageFlags.Ephemeral
     });
   }
@@ -118,7 +121,8 @@ async function handleQueue(interaction) {
   if (queueState.isQueueLocked()) {
     return interaction.reply({
       content:
-        "A fila está bloqueada enquanto uma partida está sendo formada.",
+        "A fila está bloqueada enquanto uma partida está sendo formada. Consulte sua situação para saber se deve confirmar presença ou aguardar.",
+      components: situationButton(),
       flags: MessageFlags.Ephemeral
     });
   }
@@ -132,7 +136,8 @@ async function handleQueue(interaction) {
     return interaction.reply({
       content:
         `Você possui um cooldown de matchmaking. ` +
-        `Tempo restante: **${minutes} minuto(s)**.`,
+        `Tempo restante: **${minutes} minuto(s)**. Consulte sua situação para ver quando poderá voltar.`,
+      components: situationButton(),
       flags: MessageFlags.Ephemeral
     });
   }
@@ -186,7 +191,8 @@ async function joinQueue(interaction, player) {
   if (activeMatch) {
     return interaction.reply({
       content:
-        `Você já participa da partida **${activeMatch.match_code}**.`,
+        `Você já participa da partida **${activeMatch.match_code}**. Finalize ou confirme o resultado antes de entrar em outra fila.`,
+      components: channelLink(interaction.guildId,config.discord.resultsChannelId,"Abrir resultados"),
       flags: MessageFlags.Ephemeral
     });
   }

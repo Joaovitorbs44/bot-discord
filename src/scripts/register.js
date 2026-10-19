@@ -16,6 +16,7 @@ const { command: homologationCommand } = require("./homologation");
 const { commands: scoreboardCommands } = require("./scoreboards");
 
 const commands = [
+  require("./situation").command,
   ...require("./community").commands,
   ...scoreboardCommands,
   homologationCommand,

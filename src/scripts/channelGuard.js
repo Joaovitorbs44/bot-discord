@@ -1,3 +1,4 @@
+const { channelLink } = require("../ui/guidance");
 const { MessageFlags, PermissionFlagsBits } = require("discord.js");
 const config = require("../config/config");
 const STAFF_PANEL_ID = "1557714957007593472";
@@ -60,7 +61,7 @@ async function enforceChannel(interaction) {
     interaction.customId === "preview_select")) return false;
   const channelId = await expectedChannel(interaction);
   if (!channelId || interaction.channelId === channelId) return false;
-  await interaction.reply({ content: `Este comando ou ação só pode ser usado em <#${channelId}>.`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+  await interaction.reply({ content: `Este comando ou ação pertence a <#${channelId}>. Abra o canal pelo botão abaixo e tente novamente.`, components: channelLink(interaction.guildId,channelId), flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
   return true;
 }
 module.exports = { enforceChannel };

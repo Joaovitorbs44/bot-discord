@@ -10,9 +10,9 @@ function render(snapshot) {
   const lines = [
     `## 🔔 Partida encontrada · Ready Check · Lobby #${snapshot.sessionId}`,
     `**${snapshot.confirmed.length}/${snapshot.total} confirmados**`,
-    snapshot.deadline ? `Prazo: <t:${Math.ceil(snapshot.deadline/1000)}:R>` : "Prazo não iniciado",
-    ...snapshot.confirmed.map(id => `✅ <@${id}>`),
-    ...snapshot.waiting.map(id => `⏳ <@${id}>`)
+    snapshot.deadline ? `Prazo: <t:${Math.ceil(snapshot.deadline/1000)}:T> (<t:${Math.ceil(snapshot.deadline/1000)}:R>)` : "Prazo não iniciado",
+    ...snapshot.confirmed.map(id => `✅ Confirmado · <@${id}>`),
+    ...snapshot.waiting.map(id => `⏳ Pendente · <@${id}>`)
   ];
   const container = new ContainerBuilder().setAccentColor(0xFF3D2C)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));

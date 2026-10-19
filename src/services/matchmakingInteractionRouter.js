@@ -1,3 +1,4 @@
+const { channelLink } = require("../ui/guidance");
 const db = require("../database/database");
 const { matchTeam } = require("./teamLabels");
 // Router for session-scoped Discord interactions. Legacy controls remain unchanged.
@@ -18,8 +19,8 @@ const sidePanels = require("./sideChoicePanels");
 const matchCreation = require("./matchCreationSessions");
 const config = require("../config/config");
 
-async function reject(interaction, content) {
-  const payload = {content, flags:MessageFlags.Ephemeral};
+async function reject(interaction, content, channelId = null) {
+  const payload = {content, components:channelLink(interaction.guildId,channelId), flags:MessageFlags.Ephemeral};
   if (interaction.deferred || interaction.replied) return interaction.followUp(payload);
   return interaction.reply(payload);
 }
@@ -78,7 +79,7 @@ async function handleSessionComponent(interaction) {
             ? (authorized.state.sideChoicePanel?.channelId || config.discord.mapVetoChannelId)
             : authorized.session.channel_id;
   if (!channelId || interaction.channelId !== channelId) {
-    await reject(interaction,"Este controle pertence a outro canal do lobby.");
+    await reject(interaction,"Este controle pertence a outro canal do lobby. Abra o canal abaixo para continuar.",channelId);
     return true;
   }
   if (parsed.stage === "ready_check" && interaction.isButton()) {
