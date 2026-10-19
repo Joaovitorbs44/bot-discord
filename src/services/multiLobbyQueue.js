@@ -63,6 +63,7 @@ async function handle(interaction){
    await interaction.reply({content:"Você já está na fila ou em um lobby ativo. Consulte sua situação para abrir o canal da etapa atual.",components:situationButton(),flags:MessageFlags.Ephemeral});
    return true;
   }
+  require("./lobbyExtrasStore").leaveReserve(guildId,id);
  }else if(!waiting.dequeue(guildId,id)){
   await interaction.reply({content:"Você não está na fila de espera.",flags:MessageFlags.Ephemeral});
   return true;

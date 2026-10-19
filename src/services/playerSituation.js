@@ -12,6 +12,11 @@ function snapshot(guildId,discordId,now=Date.now()) {
     const rows=db.prepare('SELECT discord_id FROM matchmaking_session_players WHERE session_id=? ORDER BY joined_at,id').all(session.id);
     position=rows.findIndex(row=>row.discord_id===discordId)+1;total=rows.length;
   }
-  return {player,penalty,match,session,position,total};
+  let reservePosition=null;
+  if(db.prepare("SELECT 1 FROM sqlite_master WHERE name='lobby_reserves' AND type='table'").get()){
+    const rows=db.prepare("SELECT discord_id FROM lobby_reserves WHERE guild_id=? ORDER BY joined_at,discord_id").all(guildId);
+    const index=rows.findIndex(row=>row.discord_id===discordId);if(index>=0)reservePosition=index+1;
+  }
+  return {player,penalty,match,session,position,total,reservePosition};
 }
 module.exports={snapshot};

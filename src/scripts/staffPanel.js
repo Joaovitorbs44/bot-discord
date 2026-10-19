@@ -120,6 +120,11 @@ function createButtons() {
         .setStyle(ButtonStyle.Secondary),
 
       new ButtonBuilder()
+        .setCustomId("cancelreq:list")
+        .setLabel("Pedidos de cancelamento")
+        .setStyle(ButtonStyle.Secondary),
+
+      new ButtonBuilder()
         .setCustomId(`${PREFIX}refresh`)
         .setLabel("Atualizar")
         .setEmoji("🔄")
@@ -484,3 +489,4 @@ module.exports = {
   handleStaffPanel,
   handleStaffPanelButton
 };
+

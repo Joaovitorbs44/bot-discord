@@ -120,7 +120,10 @@ async function handleSessionComponent(interaction) {
     }
     await reject(interaction,result.finished ? `Draft concluído. Continuem em <#${config.discord.mapVetoChannelId}>.` : "Jogador selecionado.");
     try {
-      if (result.finished) await mapVetoPanels.publish(interaction.client,parsed.sessionId);
+      if (result.finished) {
+        await mapVetoPanels.publish(interaction.client,parsed.sessionId);
+        await require("./teamVoice").afterDraft(interaction.client,parsed.sessionId);
+      }
       else await draftPanels.publish(interaction.client,parsed.sessionId);
     } catch (error) { console.error("[MULTILOBBY] Draft handoff failed:",error); }
     return true;

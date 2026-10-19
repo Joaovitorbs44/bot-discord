@@ -182,6 +182,7 @@ const R6_RANKS = [
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMembers
   ]
 });
@@ -350,6 +351,8 @@ client.once(
     await initializeMatchmaking(
       readyClient
     );
+    try { await require("../services/teamVoice").recover(readyClient); } catch (error) { console.warn("[VOICE] Recuperação:", error.message); }
+    setInterval(() => require("../services/teamVoice").cleanup(readyClient).catch(error => console.warn("[VOICE] Limpeza:", error.message)),60000).unref();
   }
 );
 
@@ -361,6 +364,7 @@ client.on(
   Events.InteractionCreate,
   async interaction => {
     try {
+      if (await require("../scripts/lobbyExtras").handle(interaction)) return;
       if (await scoreboards.handle(interaction)) return;
       if (await handleSessionComponent(interaction)) return;
       if (await require("../scripts/situation").handle(interaction)) return;

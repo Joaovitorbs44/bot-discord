@@ -10,6 +10,7 @@ function view(i) {
   if(!s.player||s.player.access_active!==1){lines.push('**Acesso pendente:** solicite seu acesso e aguarde a aprovação da staff.');channel=c.accessChannelId;label='Solicitar acesso';}
   else if(s.player.is_banned){lines.push('**Acesso bloqueado:** procure a staff para entender o motivo e solicitar uma revisão.');channel=c.accessChannelId;label='Abrir canal de acesso';}
   else lines.push('**Acesso:** aprovado.');
+  if(s.reservePosition)lines.push(`**Na reserva:** posição ${s.reservePosition}. Se for chamado, abra a confirmação de presença no prazo indicado.`);
   if(s.penalty)lines.push(`**Penalidade ativa:** ${safe(s.penalty.reason,250)}\nVocê poderá voltar à fila em <t:${Math.ceil(s.penalty.expires_at/1000)}:F> (<t:${Math.ceil(s.penalty.expires_at/1000)}:R>).`);
   if(s.match){
     lines.push(`**Partida ${safe(s.match.match_code)} · ${safe(s.match.map)}**\n`+({playing:'Em andamento. Ao terminar, os capitães informam o resultado.',pending_confirmation:'Pendente: aguardando confirmação do resultado pelo outro capitão.',disputed:'Em disputa: aguardando decisão da staff.'}[s.match.status]));
@@ -24,7 +25,7 @@ function view(i) {
     label=['map_veto','side_choice'].includes(stage)?'Abrir banimento de mapas':stage==='playing'?'Abrir resultados':'Abrir seleção de jogadores';
     try{const state=JSON.parse(s.session.state_json||'{}');const key={ready_check:'readyCheckPanel',captain_vote:'captainVotePanel',draft:'draftPanel',map_veto:'mapVetoPanel',side_choice:'sideChoicePanel'}[stage];if(state[key]?.channelId===channel)messageId=state[key].messageId;}catch{}
   } else if(s.position)lines.push(`**Na fila:** posição ${s.position} · ${s.total} jogadores aguardando.\nAguarde a formação da partida e a confirmação de presença.`);
-  else if(s.player?.access_active===1&&!s.player.is_banned&&!s.penalty)lines.push('**Disponível para jogar.** Abra a fila e clique em “Entrar na fila”.');
+  else if(s.player?.access_active===1&&!s.player.is_banned&&!s.penalty&&!s.reservePosition)lines.push('**Disponível para jogar.** Abra a fila e clique em “Entrar na fila”.');
   const embed=new EmbedBuilder().setColor(0xFF3D2C).setTitle('Minha situação').setDescription(lines.join('\n\n')).setFooter({text:'Consulta privada. Atualize para consultar seu estado atual.'});
   const refresh=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('my_situation:refresh').setLabel('Atualizar minha situação').setStyle(ButtonStyle.Secondary));
   return {content:"",embeds:[embed],components:[...channelLink(i.guildId,channel,label,messageId),refresh],allowedMentions:{parse:[]}};

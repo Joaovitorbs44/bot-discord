@@ -72,6 +72,18 @@ function schedule(client,sessionId) {
   if (!snapshot || snapshot.stage !== "ready_check" || snapshot.status !== "active") return;
   if (!snapshot.deadline) return;
   sessions.scheduleTimer(sessionId,snapshot.deadline,async () => {
+    const replacement = require("./lobbyExtrasStore").replaceAbsent(sessionId,config.matchmaking.readyCheckSeconds);
+    if (replacement) {
+      const session=sessions.getSession(sessionId),state=sessions.parseState(session);
+      const channel=await channelFor(client,session,state);
+      // A fresh panel notifies called reserves; confirmed players stay confirmed.
+      const previous=state.readyCheckPanel?.messageId;
+      const message=await channel.send({...render(ready.snapshot(sessionId)),allowedMentions:{parse:[],users:replacement.called}});
+      sessions.updateState(sessionId,"ready_check",{readyCheckPanel:{channelId:channel.id,messageId:message.id}});
+      if(previous)try{const old=await channel.messages.fetch(previous);await require("./panelLifecycle").removeMessage(client,old);}catch{}
+      schedule(client,sessionId);
+      return;
+    }
     const expired = ready.expire(sessionId);
     if (!expired) return;
     // Cancelled sessions remain persisted for staff review. Do not impose

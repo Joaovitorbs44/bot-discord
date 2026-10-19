@@ -720,6 +720,30 @@ async function handleReadyCheckTimeout() {
     player => !confirmed.has(player.discordId)
   );
 
+  const replacement = require("../services/lobbyExtrasStore").replaceAbsent(
+    sessionId, config.matchmaking.readyCheckSeconds,
+    id => {
+      const existing = db.prepare("SELECT 1 FROM player_penalty_history WHERE discord_id=? AND session_id=? AND reason='ready_check_timeout'").get(id,sessionId);
+      if (!existing) penaltyFor(id);
+    }
+  );
+  if (replacement) {
+    const rows=db.prepare("SELECT sp.discord_id,sp.ready_confirmed,p.r6_nickname,p.r6_rank FROM matchmaking_session_players sp JOIN players p ON p.discord_id=sp.discord_id WHERE sp.session_id=? ORDER BY sp.joined_at,sp.id").all(sessionId);
+    players=rows.map(p=>({discordId:p.discord_id,nickname:p.r6_nickname,rank:p.r6_rank}));
+    confirmed=new Set(rows.filter(p=>p.ready_confirmed===1).map(p=>p.discord_id));
+    deadline=replacement.deadline;
+    finishing=false;
+    const old=message;
+    try {
+      if (old?.channel) {
+        message=await old.channel.send({...panel(),allowedMentions:{parse:[],users:replacement.called}});
+        saveState();
+        await deleteTemporaryMessage(old);
+      } else { saveState(); await editPanel(); }
+    } finally { scheduleTimeout(); }
+    return;
+  }
+
   const penalties = [];
 
   const current = session();

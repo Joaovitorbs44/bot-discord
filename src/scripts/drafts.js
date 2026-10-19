@@ -883,6 +883,7 @@ async function finishDraft() {
   };
 
   try {
+    await require("../services/teamVoice").afterDraft(draftClient,session.id);
     await startMapVeto(
       context,
       result,

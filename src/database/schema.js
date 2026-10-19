@@ -406,6 +406,7 @@ function createIndexes() {
   }
   require("../services/scoreboardStore").initialize();
   require("../services/communityFeatures").initialize();
+  require("../services/lobbyExtrasStore").initialize();
   const correction = require("../services/confirmedMatchCorrection").apply(db);
   console.log("[DATA FIX] #298604:", JSON.stringify(correction));
 }

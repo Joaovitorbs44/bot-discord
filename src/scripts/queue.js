@@ -217,6 +217,7 @@ async function joinQueue(interaction, player) {
     });
   }
 
+  require("../services/lobbyExtrasStore").leaveReserve(interaction.guildId,userId);
   queueState.setCooldown(userId);
   queueState.setQueueMessage(interaction.message);
 
