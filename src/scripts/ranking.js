@@ -33,7 +33,11 @@ async function handleRanking(interaction) { return interaction.reply(buildRankin
 async function handleRankingPage(interaction) {
   const page = Number(interaction.customId.slice("ranking_page:".length));
   if (!Number.isSafeInteger(page)) return interaction.reply({content:"Página inválida.",flags:MessageFlags.Ephemeral});
-  return interaction.update(buildRanking(page));
+  const payload = buildRanking(page);
+  if (interaction.message.flags.has(MessageFlags.Ephemeral)) {
+    return interaction.update(payload);
+  }
+  return interaction.reply({ ...payload, flags: payload.flags | MessageFlags.Ephemeral });
 }
 module.exports = handleRanking;
 module.exports.handleRankingPage = handleRankingPage;
